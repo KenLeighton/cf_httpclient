@@ -407,74 +407,33 @@ Required JARs (in lib/ directory):
 			<cfset cookieStore = createObject("java", "org.apache.http.impl.client.BasicCookieStore").init()>
 		</cfif>
 		
-		<!--- Create connection manager for pooling --->
-		<cfset connectionManager = createObject("java", "org.apache.http.impl.conn.PoolingHttpClientConnectionManager").init()>
-		<cfset connectionManager.setMaxTotal(javaCast("int", 100))>
-		<cfset connectionManager.setDefaultMaxPerRoute(javaCast("int", 20))>
+		<!--- CRITICAL FIX: Configure SSL BEFORE creating ConnectionManager --->
+		<!--- PoolingHttpClientConnectionManager uses its own socket factory registry --->
+		<!--- Setting SSLSocketFactory on HttpClientBuilder AFTER ConnectionManager is created doesn't work --->
+		<!--- Solution: Create registry with SSL socket factory, then pass to ConnectionManager constructor --->
 		
-		<!--- Build HttpClient with session configuration --->
-		<cfset httpClientBuilder = createObject("java", "org.apache.http.impl.client.HttpClients").custom()>
-		<cfset httpClientBuilder.setConnectionManager(connectionManager)>
-		
-		<!--- Add CookieStore if cookies enabled --->
-		<cfif variables.enableCookies>
-			<cfset httpClientBuilder.setDefaultCookieStore(cookieStore)>
-		</cfif>
-		
-		<!--- Configure REDIRECT strategy --->
-		<cfif attributes.redirect eq "n">
-			<!--- Disable redirects --->
-			<cfset noRedirectStrategy = createObject("java", "org.apache.http.impl.client.NoRedirectStrategy").INSTANCE>
-			<cfset httpClientBuilder.setRedirectStrategy(noRedirectStrategy)>
-		<cfelse>
-			<!--- Follow redirects (default: LaxRedirectStrategy) --->
-			<cfset laxRedirectStrategy = createObject("java", "org.apache.http.impl.client.LaxRedirectStrategy").init()>
-			<cfset httpClientBuilder.setRedirectStrategy(laxRedirectStrategy)>
-		</cfif>
-		
-		<!--- Configure HTTP Authentication --->
-		<cfif len(trim(attributes.user)) gt 0>
-			<!--- Parse URL to get target host --->
-			<cfset urlParts = createObject("java", "java.net.URL").init(attributes.url)>
-			<cfset targetHost = createObject("java", "org.apache.http.HttpHost").init(
-				urlParts.getHost(),
-				urlParts.getPort() eq -1 ? (urlParts.getProtocol() eq "https" ? 443 : 80) : urlParts.getPort(),
-				urlParts.getProtocol()
-			)>
-			
-			<!--- Create credentials --->
-			<cfset credentials = createObject("java", "org.apache.http.auth.UsernamePasswordCredentials").init(
-				trim(attributes.user),
-				len(trim(attributes.pass)) gt 0 ? trim(attributes.pass) : ""
-			)>
-			
-			<!--- Create auth scope for target host --->
-			<cfset authScope = createObject("java", "org.apache.http.auth.AuthScope").init(targetHost)>
-			
-			<!--- Create credentials provider --->
-			<cfset credentialsProvider = createObject("java", "org.apache.http.impl.client.BasicCredentialsProvider").init()>
-			<cfset credentialsProvider.setCredentials(authScope, credentials)>
-			
-			<!--- Set credentials provider on HttpClient --->
-			<cfset httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider)>
-			
-			<!--- Configure auth schemes if specified --->
-			<cfif len(trim(attributes.schemes)) gt 0>
-				<!--- SCHEMES parameter specifies which auth schemes to use --->
-				<!--- Default is "basic,digest,ntlm" if not specified --->
-				<!--- For now, we accept the default behavior (all schemes supported by HttpClient) --->
-				<!--- Future enhancement: parse SCHEMES and configure AuthSchemeRegistry --->
-			</cfif>
-		</cfif>
+		<cfset variables.hasSSLConfig = false>
 		
 		<!--- Configure SSL/TLS if needed --->
 		<cfif len(trim(attributes.ssl)) gt 0 OR attributes.sslerrors eq "y" OR len(trim(attributes.certstorename)) gt 0>
+			<cfset variables.hasSSLConfig = true>
 			<cfset sslContextBuilder = createObject("java", "org.apache.http.ssl.SSLContexts").custom()>
 			
 			<!--- Handle SSLERRORS=y (ignore certificate errors) --->
 			<cfif attributes.sslerrors eq "y">
-				<cfset trustStrategy = createObject("java", "org.apache.http.conn.ssl.TrustSelfSignedStrategy").init()>
-				<cfset sslContextBuilder.loadTrustMaterial(javaCast("null", ""), trustStrategy)>
+				<!--- Use TrustAllStrategy which accepts ALL certificates (not just self-signed) --->
+				<!--- Available in HttpClient 4.5.4+. CF11 requires JAR upgrade from 4.5.2 to 4.5.14 --->
+				<cfif variables.debugMode>
+					<cflog file="httpclient" text="SSLERRORS=y detected, loading TrustAllStrategy">
+				</cfif>
+				<cfset trustAllStrategy = createObject("java", "org.apache.http.conn.ssl.TrustAllStrategy").INSTANCE>
+				<cfif variables.debugMode>
+					<cflog file="httpclient" text="TrustAllStrategy.INSTANCE loaded: #trustAllStrategy.toString()#">
+				</cfif>
+				<cfset sslContextBuilder.loadTrustMaterial(javaCast("null", ""), trustAllStrategy)>
+				<cfif variables.debugMode>
+					<cflog file="httpclient" text="loadTrustMaterial called with TrustAllStrategy">
+				</cfif>
 			</cfif>
 			
 			<!--- Handle client certificate (CERTSTORENAME, CERTSUBJSTR) --->
@@ -558,8 +517,81 @@ Required JARs (in lib/ directory):
 					defaultHostnameVerifier
 				)>
 			</cfif>
+		</cfif>
+		
+		<!--- Create connection manager with SSL registry if SSL is configured --->
+		<cfif variables.hasSSLConfig>
+			<!--- Create socket factory registry with custom SSL factory --->
+			<cfset registryBuilder = createObject("java", "org.apache.http.config.RegistryBuilder").create()>
+			<cfset registryBuilder.register("https", sslSocketFactory)>
+			<cfset registryBuilder.register("http", createObject("java", "org.apache.http.conn.socket.PlainConnectionSocketFactory").INSTANCE)>
+			<cfset socketFactoryRegistry = registryBuilder.build()>
 			
-			<cfset httpClientBuilder.setSSLSocketFactory(sslSocketFactory)>
+			<!--- Create connection manager with custom registry --->
+			<cfset connectionManager = createObject("java", "org.apache.http.impl.conn.PoolingHttpClientConnectionManager").init(socketFactoryRegistry)>
+			<cfif variables.debugMode>
+				<cflog file="httpclient" text="Created PoolingHttpClientConnectionManager with custom SSL registry">
+			</cfif>
+		<cfelse>
+			<!--- No SSL configuration - use default connection manager --->
+			<cfset connectionManager = createObject("java", "org.apache.http.impl.conn.PoolingHttpClientConnectionManager").init()>
+		</cfif>
+		
+		<cfset connectionManager.setMaxTotal(javaCast("int", 100))>
+		<cfset connectionManager.setDefaultMaxPerRoute(javaCast("int", 20))>
+		
+		<!--- Build HttpClient with session configuration --->
+		<cfset httpClientBuilder = createObject("java", "org.apache.http.impl.client.HttpClients").custom()>
+		<cfset httpClientBuilder.setConnectionManager(connectionManager)>
+		
+		<!--- Add CookieStore if cookies enabled --->
+		<cfif variables.enableCookies>
+			<cfset httpClientBuilder.setDefaultCookieStore(cookieStore)>
+		</cfif>
+		
+		<!--- Configure REDIRECT strategy (NEW SESSION) --->
+		<!--- NOTE: We disable automatic redirects and handle them manually to deal with --->
+		<!--- malformed Location headers from bot detection services (e.g., Radware) --->
+		<!--- that include unencoded spaces and other illegal URI characters --->
+		<cfset requestConfigBuilder = createObject("java", "org.apache.http.client.config.RequestConfig").custom()>
+		<cfset requestConfigBuilder.setRedirectsEnabled(javaCast("boolean", false))>
+		<cfset httpClientBuilder.setDefaultRequestConfig(requestConfigBuilder.build())>
+		<cfset variables.manualRedirects = attributes.redirect eq "y">
+		<cfset variables.maxRedirects = 10>
+		
+		<!--- Configure HTTP Authentication --->
+		<cfif len(trim(attributes.user)) gt 0>
+			<!--- Parse URL to get target host --->
+			<cfset urlParts = createObject("java", "java.net.URL").init(attributes.url)>
+			<cfset targetHost = createObject("java", "org.apache.http.HttpHost").init(
+				urlParts.getHost(),
+				urlParts.getPort() eq -1 ? (urlParts.getProtocol() eq "https" ? 443 : 80) : urlParts.getPort(),
+				urlParts.getProtocol()
+			)>
+			
+			<!--- Create credentials --->
+			<cfset credentials = createObject("java", "org.apache.http.auth.UsernamePasswordCredentials").init(
+				trim(attributes.user),
+				len(trim(attributes.pass)) gt 0 ? trim(attributes.pass) : ""
+			)>
+			
+			<!--- Create auth scope for target host --->
+			<cfset authScope = createObject("java", "org.apache.http.auth.AuthScope").init(targetHost)>
+			
+			<!--- Create credentials provider --->
+			<cfset credentialsProvider = createObject("java", "org.apache.http.impl.client.BasicCredentialsProvider").init()>
+			<cfset credentialsProvider.setCredentials(authScope, credentials)>
+			
+			<!--- Set credentials provider on HttpClient --->
+			<cfset httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider)>
+			
+			<!--- Configure auth schemes if specified --->
+			<cfif len(trim(attributes.schemes)) gt 0>
+				<!--- SCHEMES parameter specifies which auth schemes to use --->
+				<!--- Default is "basic,digest,ntlm" if not specified --->
+				<!--- For now, we accept the default behavior (all schemes supported by HttpClient) --->
+				<!--- Future enhancement: parse SCHEMES and configure AuthSchemeRegistry --->
+			</cfif>
 		</cfif>
 		
 		<!--- Build the HttpClient --->
@@ -608,6 +640,10 @@ Required JARs (in lib/ directory):
 			<cfset server.httpclient_sessions[variables.sessionID].lastAccessed = now()>
 		</cflock>
 		
+		<!--- Set manual redirect variables for session continuation --->
+		<cfset variables.manualRedirects = attributes.redirect eq "y">
+		<cfset variables.maxRedirects = 10>
+		
 		<!--- Return session ID to caller --->
 		<cfset caller.httpsession = variables.sessionID>
 		
@@ -615,16 +651,15 @@ Required JARs (in lib/ directory):
 		<!--- No session - create temporary HttpClient for single request --->
 		<cfset httpClientBuilder = createObject("java", "org.apache.http.impl.client.HttpClients").custom()>
 		
-		<!--- Configure REDIRECT strategy --->
-		<cfif attributes.redirect eq "n">
-			<!--- Disable redirects --->
-			<cfset noRedirectStrategy = createObject("java", "org.apache.http.impl.client.NoRedirectStrategy").INSTANCE>
-			<cfset httpClientBuilder.setRedirectStrategy(noRedirectStrategy)>
-		<cfelse>
-			<!--- Follow redirects (default: LaxRedirectStrategy) --->
-			<cfset laxRedirectStrategy = createObject("java", "org.apache.http.impl.client.LaxRedirectStrategy").init()>
-			<cfset httpClientBuilder.setRedirectStrategy(laxRedirectStrategy)>
-		</cfif>
+		<!--- Configure REDIRECT strategy (NO SESSION) --->
+		<!--- NOTE: We disable automatic redirects and handle them manually to deal with --->
+		<!--- malformed Location headers from bot detection services (e.g., Radware) --->
+		<!--- that include unencoded spaces and other illegal URI characters --->
+		<cfset requestConfigBuilder = createObject("java", "org.apache.http.client.config.RequestConfig").custom()>
+		<cfset requestConfigBuilder.setRedirectsEnabled(javaCast("boolean", false))>
+		<cfset httpClientBuilder.setDefaultRequestConfig(requestConfigBuilder.build())>
+		<cfset variables.manualRedirects = attributes.redirect eq "y">
+		<cfset variables.maxRedirects = 10>
 		
 		<!--- Configure HTTP Authentication --->
 		<cfif len(trim(attributes.user)) gt 0>
@@ -659,8 +694,10 @@ Required JARs (in lib/ directory):
 			
 			<!--- Handle SSLERRORS=y --->
 			<cfif attributes.sslerrors eq "y">
-				<cfset trustStrategy = createObject("java", "org.apache.http.conn.ssl.TrustSelfSignedStrategy").init()>
-				<cfset sslContextBuilder.loadTrustMaterial(javaCast("null", ""), trustStrategy)>
+				<!--- Use TrustAllStrategy which accepts ALL certificates (not just self-signed) --->
+				<!--- Available in HttpClient 4.5.4+. CF11 requires JAR upgrade from 4.5.2 to 4.5.14 --->
+				<cfset trustAllStrategy = createObject("java", "org.apache.http.conn.ssl.TrustAllStrategy").INSTANCE>
+				<cfset sslContextBuilder.loadTrustMaterial(javaCast("null", ""), trustAllStrategy)>
 			</cfif>
 			
 			<!--- Handle client certificate (CERTSTORENAME, CERTSUBJSTR) --->
@@ -776,6 +813,8 @@ Required JARs (in lib/ directory):
 	<cfset requestConfigBuilder.setConnectTimeout(variables.connectTimeout)>
 	<cfset requestConfigBuilder.setSocketTimeout(variables.socketTimeout)>
 	<cfset requestConfigBuilder.setConnectionRequestTimeout(javaCast("int", 5000))>
+	<!--- Disable automatic redirects - we handle them manually to fix malformed Location headers --->
+	<cfset requestConfigBuilder.setRedirectsEnabled(javaCast("boolean", false))>
 	
 	<!---
 	============================================================================
@@ -897,6 +936,14 @@ Required JARs (in lib/ directory):
 		============================================================================
 		--->
 		
+		<!--- Add default headers to match CFX_HTTP5 behavior --->
+		<cfset httpRequest.setHeader("Accept", "image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, application/vnd.ms-excel, application/msword, application/vnd.ms-powerpoint, */*")>
+		<cfset httpRequest.setHeader("Accept-Language", "en-us")>
+		<cfset httpRequest.setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")>
+		<cfset httpRequest.setHeader("Pragma", "no-cache")>
+		<cfset httpRequest.setHeader("Cache-Control", "no-cache")>
+		
+		<!--- Custom headers override defaults --->
 		<cfif len(trim(attributes.headers)) gt 0>
 			<!--- Parse headers - support both semicolon and CRLF delimiters --->
 			<cfset headerText = attributes.headers>
@@ -1103,6 +1150,112 @@ Required JARs (in lib/ directory):
 		<cfset endTime = getTickCount()>
 		<cfset caller.httptime = endTime - startTime>
 		
+		<!---
+		============================================================================
+		MANUAL REDIRECT HANDLING
+		============================================================================
+		Handle redirects manually to deal with malformed Location headers from
+		bot detection services that contain illegal URI characters (spaces, etc.)
+		--->
+		<cfset redirectCount = 0>
+		<cfset currentRequest = httpRequest>
+		<cfset currentResponse = response>
+		
+		<cfloop condition="variables.manualRedirects AND redirectCount lt variables.maxRedirects">
+			<cfset currentStatusCode = currentResponse.getStatusLine().getStatusCode()>
+			
+			<!--- Check if this is a redirect (3xx status) --->
+			<cfif currentStatusCode gte 300 AND currentStatusCode lt 400>
+				<!--- Get Location header --->
+				<cfset locationHeader = currentResponse.getFirstHeader("Location")>
+				
+				<cfif NOT isNull(locationHeader)>
+					<cfset redirectUrl = locationHeader.getValue()>
+					<cflog file="httpclient" text="Redirect ##(#redirectCount + 1#): Status #currentStatusCode#, Location: #redirectUrl#">
+					
+					<!--- Check if redirect is to a different domain (cross-domain redirect) --->
+					<!--- CFX_HTTP5 behavior: don't follow cross-domain redirects by default --->
+					<cftry>
+						<cfset originalUrlObj = createObject("java", "java.net.URL").init(trim(attributes.url))>
+						<cfset redirectUrlObj = createObject("java", "java.net.URL").init(redirectUrl)>
+						<cfset originalHost = originalUrlObj.getHost()>
+						<cfset redirectHost = redirectUrlObj.getHost()>
+						
+						<cfif originalHost neq redirectHost>
+							<cflog file="httpclient" text="Skipping cross-domain redirect from #originalHost# to #redirectHost#">
+							<cfbreak>
+						</cfif>
+						<cfcatch>
+							<!--- If URL parsing fails, skip redirect to be safe --->
+							<cflog file="httpclient" text="Could not parse redirect URL, skipping redirect">
+							<cfbreak>
+						</cfcatch>
+					</cftry>
+					
+					<!--- URL-encode any problematic characters in the redirect URL --->
+					<cftry>
+						<!--- Try to create a valid URI - if it fails, we'll catch and fix it --->
+						<cfset testUri = createObject("java", "java.net.URI").init(redirectUrl)>
+						<cfset validRedirectUrl = redirectUrl>
+						<cfcatch type="any">
+							<!--- URL contains illegal characters - try to fix it --->
+							<cflog file="httpclient" text="Malformed redirect URL detected, attempting to fix: #cfcatch.message#">
+							
+							<!--- Simple fix: Replace spaces with %20 --->
+							<cfset validRedirectUrl = replace(redirectUrl, " ", "%20", "ALL")>
+							
+							<!--- Try again with fixed URL --->
+							<cftry>
+								<cfset testUri = createObject("java", "java.net.URI").init(validRedirectUrl)>
+								<cflog file="httpclient" text="Fixed redirect URL: #validRedirectUrl#">
+								<cfcatch>
+									<!--- Still invalid - give up on this redirect --->
+									<cflog file="httpclient" text="Could not fix redirect URL, skipping redirect">
+									<cfbreak>
+								</cfcatch>
+							</cftry>
+						</cfcatch>
+					</cftry>
+					
+					<!--- Create new request for redirect --->
+					<cfset redirectRequest = createObject("java", "org.apache.http.client.methods.HttpGet").init(validRedirectUrl)>
+					
+					<!--- Copy headers from original request (except Host) --->
+					<cfset originalHeaders = currentRequest.getAllHeaders()>
+					<cfloop array="#originalHeaders#" index="header">
+						<cfif header.getName() neq "Host">
+							<cfset redirectRequest.addHeader(header)>
+						</cfif>
+					</cfloop>
+					
+					<!--- Close previous response --->
+					<cftry>
+						<cfset currentResponse.close()>
+						<cfcatch>
+							<!--- Ignore close errors --->
+						</cfcatch>
+					</cftry>
+					
+					<!--- Follow the redirect --->
+					<cfset currentResponse = variables.httpClient.execute(redirectRequest)>
+					<cfset currentRequest = redirectRequest>
+					<cfset redirectCount = redirectCount + 1>
+				<cfelse>
+					<!--- No Location header - stop redirecting --->
+					<cfbreak>
+				</cfif>
+			<cfelse>
+				<!--- Not a redirect status - stop --->
+				<cfbreak>
+			</cfif>
+		</cfloop>
+		
+		<!--- Use the final response after all redirects --->
+		<cfset response = currentResponse>
+		<cfif redirectCount gt 0>
+			<cflog file="httpclient" text="Completed #redirectCount# manual redirect(s)">
+		</cfif>
+		
 		<!--- Output HTTP scheme (http/https) --->
 		<cfset urlObj = createObject("java", "java.net.URL").init(trim(attributes.url))>
 		<cfset caller.httpscheme = urlObj.getProtocol()>
@@ -1121,6 +1274,9 @@ Required JARs (in lib/ directory):
 		<!--- Extract status --->
 		<cfset statusLine = response.getStatusLine()>
 		<cfset statusCode = statusLine.getStatusCode()>
+		
+		<!--- Track if we skipped redirects (for cross-domain redirects) --->
+		<cfset variables.skippedRedirect = (statusCode gte 300 AND statusCode lt 400 AND redirectCount eq 0)>
 		<cfset caller.httpstatus = statusCode & " " & statusLine.getReasonPhrase()>
 		
 		<!--- Check for HTTP error codes (4xx, 5xx) and set error status --->
@@ -1167,6 +1323,27 @@ Required JARs (in lib/ directory):
 		</cfif>
 		
 		<!--- Extract response body --->
+		<!--- Skip body extraction for 3xx redirects when redirects are disabled OR skipped (cross-domain) --->
+		<!--- CFX_HTTP5 behavior: returns empty body for redirects, only processes headers/cookies --->
+		<cfif statusCode gte 300 AND statusCode lt 400 AND (attributes.redirect eq "n" OR variables.skippedRedirect)>
+			<!--- For 3xx redirects with redirects disabled or skipped, return empty body but process cookies --->
+			<cfset caller[attributes.out] = "">
+			<cfset caller.httplength = 0>
+			<cfset caller.httpbytes = 0>
+			<!--- Consume the entity to release connection --->
+			<cfset entity = response.getEntity()>
+			<cfif NOT isNull(entity)>
+				<cfset entityUtils = createObject("java", "org.apache.http.util.EntityUtils")>
+				<cfset entityUtils.consume(entity)>
+			</cfif>
+			<!--- Close response and cleanup --->
+			<cfset response.close()>
+			<cfif NOT variables.isNewSession AND len(trim(attributes.session)) eq 0>
+				<cfset variables.httpClient.close()>
+			</cfif>
+			<cfexit method="exittag">
+		</cfif>
+		
 		<cfset entity = response.getEntity()>
 		<cfif NOT isNull(entity)>
 			<cfset entityUtils = createObject("java", "org.apache.http.util.EntityUtils")>
@@ -1289,6 +1466,29 @@ Required JARs (in lib/ directory):
 			<!--- Error handling --->
 			<cfset caller.status = "ER">
 			
+			<!--- Enhanced debug logging for troubleshooting --->
+			<cflog file="httpclient" text="EXCEPTION CAUGHT: Type=[#cfcatch.type#] Message=[#cfcatch.message#] Detail=[#cfcatch.detail#]">
+			
+			<!--- For ClientProtocolException, try to get the cause (nested exception) --->
+			<cfset errorMessage = cfcatch.message>
+			<cfif findNoCase("ClientProtocolException", cfcatch.type) AND len(trim(errorMessage)) eq 0>
+				<cftry>
+					<!--- Try to get the root cause from Java exception --->
+					<cfif structKeyExists(cfcatch, "cause") AND NOT isNull(cfcatch.cause)>
+						<cfset rootCause = cfcatch.cause>
+						<cfloop condition="NOT isNull(rootCause.getCause())">
+							<cfset rootCause = rootCause.getCause()>
+						</cfloop>
+						<cfset errorMessage = rootCause.getMessage()>
+						<cflog file="httpclient" text="ROOT CAUSE: #rootCause.getClass().getName()#: #errorMessage#">
+					</cfif>
+					<cfcatch>
+						<!--- If we can't get the cause, use a generic message --->
+						<cfset errorMessage = "HTTP protocol violation or SSL/TLS error">
+					</cfcatch>
+				</cftry>
+			</cfif>
+			
 			<!--- Map Java exceptions to CFX_HTTP5 error codes --->
 			<cfif findNoCase("ConnectTimeoutException", cfcatch.type)>
 				<cfset caller.errn = "timeout">
@@ -1302,9 +1502,12 @@ Required JARs (in lib/ directory):
 			<cfelseif findNoCase("IOException", cfcatch.type)>
 				<cfset caller.errn = "io">
 				<cfset caller.msg = cfcatch.message>
+			<cfelseif findNoCase("ClientProtocolException", cfcatch.type)>
+				<cfset caller.errn = "protocol">
+				<cfset caller.msg = len(trim(errorMessage)) ? errorMessage : "HTTP protocol error">
 			<cfelse>
 				<cfset caller.errn = "general">
-				<cfset caller.msg = cfcatch.message>
+				<cfset caller.msg = len(trim(errorMessage)) ? errorMessage : cfcatch.type>
 			</cfif>
 			
 			<!--- Close HttpClient if not part of session --->

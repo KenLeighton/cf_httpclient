@@ -109,11 +109,321 @@ The following JAR files are required (included with distribution):
 
 **Total Size:** ~2 MB
 
+### ⚠️ IMPORTANT: Adobe ColdFusion 11 Users
+
+**ColdFusion 11 ships with outdated Apache HttpClient JARs that are incompatible with cf_httpclient.** You must upgrade the server-level JARs before using cf_httpclient.
+
+#### Required ColdFusion 11 JAR Upgrades
+
+**⚠️ CRITICAL: This is a one-time, server-wide JAR replacement in your ColdFusion installation directory.**
+
+**Old JARs (currently in `{cf-install-dir}\cfusion\lib\`):**
+- `httpclient-4.2.5.jar` (shipped with CF11 - incompatible)
+- `httpcore-4.2.4.jar` (shipped with CF11 - incompatible)
+
+**New JARs (from cf_httpclient distribution `lib/` folder):**
+- `httpclient-4.5.14.jar` (compatible with cf_httpclient)
+- `httpcore-4.4.16.jar` (compatible with cf_httpclient)
+
+#### Understanding JAR Naming
+
+**Why do the new JARs have different names?**
+
+Apache HttpClient uses version numbers in JAR filenames to distinguish releases:
+- `httpclient-4.2.5.jar` = HttpClient version 4.2.5
+- `httpclient-4.5.14.jar` = HttpClient version 4.5.14
+
+**Why do we delete the old JARs?**
+
+If both versions exist in `{cf-install-dir}\cfusion\lib\`, ColdFusion's classloader may load the wrong (older) version, causing `java.lang.NoSuchMethodError` exceptions. The old JARs MUST be removed to ensure CF11 uses the new 4.5.14 versions.
+
+**Why does this affect the entire CF11 server?**
+
+ColdFusion loads JARs from `{cf-install-dir}\cfusion\lib\` at server startup and makes them available to ALL applications. This is different from application-level JARs (which only affect one application). The upgrade ensures ALL applications can use Apache HttpClient 4.5.14.
+
+#### Upgrade Procedure
+
+**Prerequisites:**
+- Download cf_httpclient v1.10.0 distribution ZIP
+- Extract to a temporary location (e.g., `D:\cf_httpclient_v1.10.0\`)
+- Identify your ColdFusion installation directory (e.g., `C:\ColdFusion11\`)
+- Administrator/root access to stop/start ColdFusion service
+
+**Generic path placeholders used below:**
+- `{cf-install-dir}` = Your CF installation directory (e.g., `C:\ColdFusion11\`, `/opt/coldfusion11/`)
+- `{distribution-dir}` = Where you extracted cf_httpclient (e.g., `D:\cf_httpclient_v1.10.0\`)
+
+---
+
+**Step 1: Stop ColdFusion Service**
+
+Stop the ColdFusion service completely before modifying JARs:
+
+```powershell
+# Windows (run as Administrator)
+net stop "ColdFusion 11 Application Server"
+
+# Linux/macOS (run as root)
+sudo /opt/coldfusion11/cfusion/bin/coldfusion stop
+```
+
+**Wait for service to stop completely** (may take 30-60 seconds).
+
+---
+
+**Step 2: Backup Original JARs**
+
+Navigate to your ColdFusion lib directory and backup the old JARs by adding `.BAK` extension:
+
+```powershell
+# Windows
+cd {cf-install-dir}\cfusion\lib
+copy httpclient-4.2.5.jar httpclient-4.2.5.jar.BAK
+copy httpcore-4.2.4.jar httpcore-4.2.4.jar.BAK
+
+# Example with actual paths:
+cd C:\ColdFusion11\cfusion\lib
+copy httpclient-4.2.5.jar httpclient-4.2.5.jar.BAK
+copy httpcore-4.2.4.jar httpcore-4.2.4.jar.BAK
+
+# Linux/macOS
+cd /opt/coldfusion11/cfusion/lib
+sudo cp httpclient-4.2.5.jar httpclient-4.2.5.jar.BAK
+sudo cp httpcore-4.2.4.jar httpcore-4.2.4.jar.BAK
+```
+
+**Verify backups exist:**
+```powershell
+# Windows
+dir *.jar.BAK
+
+# Linux/macOS
+ls -l *.jar.BAK
+```
+
+You should see:
+- `httpclient-4.2.5.jar.BAK`
+- `httpcore-4.2.4.jar.BAK`
+
+---
+
+**Step 3: Copy New JARs to ColdFusion lib Directory**
+
+Copy the new JAR files from your cf_httpclient distribution to ColdFusion's lib folder:
+
+```powershell
+# Windows
+copy {distribution-dir}\lib\httpclient-4.5.14.jar {cf-install-dir}\cfusion\lib\
+copy {distribution-dir}\lib\httpcore-4.4.16.jar {cf-install-dir}\cfusion\lib\
+
+# Example with actual paths:
+copy D:\cf_httpclient_v1.10.0\lib\httpclient-4.5.14.jar C:\ColdFusion11\cfusion\lib\
+copy D:\cf_httpclient_v1.10.0\lib\httpcore-4.4.16.jar C:\ColdFusion11\cfusion\lib\
+
+# Linux/macOS
+sudo cp {distribution-dir}/lib/httpclient-4.5.14.jar /opt/coldfusion11/cfusion/lib/
+sudo cp {distribution-dir}/lib/httpcore-4.4.16.jar /opt/coldfusion11/cfusion/lib/
+```
+
+**Verify new JARs exist:**
+```powershell
+# Windows
+dir httpclient-4.5.14.jar
+dir httpcore-4.4.16.jar
+
+# Linux/macOS
+ls -l httpclient-4.5.14.jar
+ls -l httpcore-4.4.16.jar
+```
+
+---
+
+**Step 4: Delete Old JAR Files**
+
+Remove the old JAR versions (backups remain with `.BAK` extension):
+
+```powershell
+# Windows
+del {cf-install-dir}\cfusion\lib\httpclient-4.2.5.jar
+del {cf-install-dir}\cfusion\lib\httpcore-4.2.4.jar
+
+# Example:
+del C:\ColdFusion11\cfusion\lib\httpclient-4.2.5.jar
+del C:\ColdFusion11\cfusion\lib\httpcore-4.2.4.jar
+
+# Linux/macOS
+sudo rm /opt/coldfusion11/cfusion/lib/httpclient-4.2.5.jar
+sudo rm /opt/coldfusion11/cfusion/lib/httpcore-4.2.4.jar
+```
+
+**Verify old JARs are deleted:**
+```powershell
+# Windows
+dir httpclient-4.2.5.jar
+# Should show "File Not Found"
+
+# Linux/macOS
+ls -l httpclient-4.2.5.jar
+# Should show "No such file or directory"
+```
+
+**Final state of `{cf-install-dir}\cfusion\lib\`:**
+- ✅ `httpclient-4.5.14.jar` (NEW - active)
+- ✅ `httpcore-4.4.16.jar` (NEW - active)
+- ✅ `httpclient-4.2.5.jar.BAK` (backup of old version)
+- ✅ `httpcore-4.2.4.jar.BAK` (backup of old version)
+- ❌ `httpclient-4.2.5.jar` (deleted)
+- ❌ `httpcore-4.2.4.jar` (deleted)
+
+---
+
+**Step 5: Start ColdFusion Service**
+
+Start the ColdFusion service to load the new JARs:
+
+```powershell
+# Windows (run as Administrator)
+net start "ColdFusion 11 Application Server"
+
+# Linux/macOS (run as root)
+sudo /opt/coldfusion11/cfusion/bin/coldfusion start
+```
+
+**Wait for service to fully start** (may take 1-2 minutes). Monitor logs if needed:
+- Windows: `{cf-install-dir}\cfusion\logs\coldfusion-out.log`
+- Linux/macOS: `/opt/coldfusion11/cfusion/logs/coldfusion-out.log`
+
+---
+
+**Step 6: Verify JAR Upgrade**
+
+Create a test page `test_httpclient_upgrade.cfm` in your web root:
+
+```cfml
+<cfscript>
+    writeOutput("<h1>ColdFusion 11 JAR Upgrade Verification</h1>");
+    
+    try {
+        // Test 1: Load HttpVersion class (available in both 4.2.5 and 4.5.14)
+        httpVersionClass = createObject("java", "org.apache.http.HttpVersion");
+        writeOutput("<p style='color:green;'>✓ Test 1: HttpVersion class loaded successfully</p>");
+        
+        // Test 2: Load HttpClients class (ONLY available in 4.5.x, not in 4.2.5)
+        httpClientsClass = createObject("java", "org.apache.http.impl.client.HttpClients");
+        writeOutput("<p style='color:green;'>✓ Test 2: HttpClients class loaded successfully (4.5.x detected)</p>");
+        
+        // Test 3: Verify 4.5.x specific method exists
+        httpClient = httpClientsClass.createDefault();
+        writeOutput("<p style='color:green;'>✓ Test 3: createDefault() method works (4.5.x confirmed)</p>");
+        
+        // Close client
+        httpClient.close();
+        
+        writeOutput("<h2 style='color:green;'>✓✓✓ JAR Upgrade Successful! ✓✓✓</h2>");
+        writeOutput("<p>ColdFusion 11 is now using Apache HttpClient 4.5.14</p>");
+        writeOutput("<p>You can now proceed with cf_httpclient installation</p>");
+        
+    } catch (any e) {
+        writeOutput("<h2 style='color:red;'>✗✗✗ JAR Upgrade Failed ✗✗✗</h2>");
+        writeOutput("<p><strong>Error Type:</strong> #e.type#</p>");
+        writeOutput("<p><strong>Error Message:</strong> #e.message#</p>");
+        writeOutput("<p><strong>Error Detail:</strong> #e.detail#</p>");
+        
+        if (findNoCase("NoSuchMethodError", e.message)) {
+            writeOutput("<h3>Diagnosis: Old JARs Still Loaded</h3>");
+            writeOutput("<p>ColdFusion is still using HttpClient 4.2.5</p>");
+            writeOutput("<p><strong>Possible causes:</strong></p>");
+            writeOutput("<ul>");
+            writeOutput("<li>Old JARs (4.2.5, 4.2.4) were not deleted from {cf-install-dir}\cfusion\lib\</li>");
+            writeOutput("<li>New JARs (4.5.14, 4.4.16) were not copied correctly</li>");
+            writeOutput("<li>ColdFusion service was not restarted after JAR changes</li>");
+            writeOutput("</ul>");
+            writeOutput("<p><strong>Solution:</strong> Review Steps 3-5 of the upgrade procedure</p>");
+        }
+        
+        if (findNoCase("ClassNotFoundException", e.message)) {
+            writeOutput("<h3>Diagnosis: HttpClient JARs Not Found</h3>");
+            writeOutput("<p>ColdFusion cannot find Apache HttpClient classes</p>");
+            writeOutput("<p><strong>Possible causes:</strong></p>");
+            writeOutput("<ul>");
+            writeOutput("<li>New JARs were copied to wrong directory</li>");
+            writeOutput("<li>JARs are corrupted or incomplete</li>");
+            writeOutput("</ul>");
+            writeOutput("<p><strong>Solution:</strong> Verify JAR files exist in {cf-install-dir}\cfusion\lib\</p>");
+        }
+    }
+</cfscript>
+```
+
+**Expected Output:**
+```
+✓ Test 1: HttpVersion class loaded successfully
+✓ Test 2: HttpClients class loaded successfully (4.5.x detected)
+✓ Test 3: createDefault() method works (4.5.x confirmed)
+
+✓✓✓ JAR Upgrade Successful! ✓✓✓
+ColdFusion 11 is now using Apache HttpClient 4.5.14
+You can now proceed with cf_httpclient installation
+```
+
+**If verification fails:**
+1. Check `{cf-install-dir}\cfusion\lib\` directory contents
+2. Verify old JARs (4.2.5, 4.2.4) are deleted
+3. Verify new JARs (4.5.14, 4.4.16) exist
+4. Restart ColdFusion service again
+5. Re-run verification test
+
+---
+
+#### Why This Upgrade is Required
+
+**Issue:** ColdFusion 11's `httpclient-4.2.5.jar` lacks critical methods used by cf_httpclient:
+- `setDefaultCookieStore()` (cookie management)
+- `setSSLContext()` (SSL/TLS configuration)
+- `setConnectionManager()` (connection pooling)
+
+**Symptoms without upgrade:**
+- `java.lang.NoSuchMethodError` exceptions
+- SSL/TLS connection failures
+- Session management errors
+
+**Impact:** The JAR upgrade affects the entire ColdFusion server, not just your application. This is a one-time server-level change.
+
+#### ColdFusion 2016+ Users
+
+**No server-level JAR upgrade required.** ColdFusion 2016 and later ship with compatible HttpClient versions (4.5.x or later).
+
+**Proceed directly to Section 2: Installation** (application-level deployment only).
+
+#### Lucee Users
+
+**No server-level JAR upgrade required.** Lucee 5.0+ ships with compatible HttpClient versions.
+
+**Proceed directly to Section 2: Installation** (application-level deployment only).
+
+#### CommandBox Users
+
+**No server-level JAR upgrade required.** CommandBox uses Lucee, which ships with compatible HttpClient versions.
+
+**Important for CommandBox:**
+- JARs are deployed at **application level** (in your application's `/lib/` folder)
+- JARs are NOT deployed to CommandBox server directories
+- CommandBox servers are ephemeral (can be deleted/recreated)
+- Application-level JARs persist with your application code
+
+**Proceed directly to Section 2: Installation** (application-level deployment only).
+
 ---
 
 ## 2. Installation
 
-cf_httpclient is deployed at the application level, packaged with your application code. This provides portability across Adobe ColdFusion, Lucee, and CommandBox environments without requiring server restarts or administrator access.
+cf_httpclient is deployed at the **application level**, packaged with your application code. This provides portability across Adobe ColdFusion, Lucee, and CommandBox environments without requiring server restarts or administrator access.
+
+**Platform Summary:**
+- **Adobe ColdFusion 11:** Requires one-time server-level JAR upgrade (Section 1 above) + application-level deployment (below)
+- **Adobe ColdFusion 2016+:** Application-level deployment only (below)
+- **Lucee 5+:** Application-level deployment only (below)
+- **CommandBox:** Application-level deployment only (below)
 
 ### Step 1: Create Directory Structure
 
@@ -230,11 +540,36 @@ If your application uses `Application.cfm` instead of `Application.cfc`, use thi
 
 ### CommandBox Deployment
 
-This configuration works automatically with CommandBox - no additional server.json configuration required:
+**Important:** JARs are deployed at the **application level**, not in CommandBox server directories.
+
+**Why this matters:**
+- CommandBox servers are ephemeral (created/deleted as needed)
+- Application-level JARs persist with your code in version control
+- No server.json configuration required
+- Portable across different CommandBox servers
+
+**Directory structure for CommandBox:**
+```
+/your-app/
+  /lib/                          ← JARs go here (application level)
+    httpclient-4.5.14.jar
+    httpcore-4.4.16.jar
+    commons-logging-1.2.jar
+    commons-codec-1.11.jar
+  /customtags/
+    httpclient.cfm
+  Application.cfc
+  box.json (optional)
+  server.json (optional)
+```
+
+**Start server - no additional configuration needed:**
 
 ```bash
 box server start
 ```
+
+The Application.cfc `this.javaSettings` configuration automatically loads JARs from your application's `/lib/` folder.
 
 ### Verification
 
@@ -638,6 +973,28 @@ Document upload test
 
 ### 5.6. Custom Headers
 
+#### Default Headers (CFX_HTTP5 Compatibility)
+
+cf_httpclient automatically includes default HTTP headers matching CFX_HTTP5's behavior:
+
+```
+Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, 
+        application/vnd.ms-excel, application/msword, 
+        application/vnd.ms-powerpoint, */*
+Accept-Language: en-us
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) 
+            AppleWebKit/537.36 (KHTML, like Gecko) 
+            Chrome/137.0.0.0 Safari/537.36
+Pragma: no-cache
+Cache-Control: no-cache
+```
+
+**Why this matters:** These default headers make cf_httpclient requests appear as legitimate browser traffic, allowing access to sites with bot detection (Radware, Cloudflare, etc.).
+
+**Custom headers override defaults:** When you provide a `headers` parameter, your values override the defaults.
+
+#### Custom Header Examples
+
 ```cfml
 <!--- Multiple headers (newline-separated) --->
 <cf_httpclient 
@@ -648,6 +1005,8 @@ User-Agent: MyApp/1.0
 Accept: application/json
 X-Custom-Header: custom-value"
     out="response">
+
+<!--- The User-Agent above overrides the default User-Agent --->
 ```
 
 Or using `<chr(10)>` for line breaks:
@@ -662,6 +1021,32 @@ Or using `<chr(10)>` for line breaks:
     method="get"
     headers="#requestHeaders#"
     out="response">
+```
+
+#### Header Override Behavior
+
+```cfml
+<!--- Scenario 1: No headers parameter --->
+<cf_httpclient url="..." method="get" out="result">
+<!--- Uses all default headers (browser-like request) --->
+
+<!--- Scenario 2: Custom User-Agent --->
+<cf_httpclient url="..." method="get" 
+    headers="User-Agent: MyBot/1.0" 
+    out="result">
+<!--- User-Agent: MyBot/1.0 (custom)
+      Accept: [default]
+      Accept-Language: [default]
+      Other defaults preserved --->
+
+<!--- Scenario 3: Multiple overrides --->
+<cf_httpclient url="..." method="get" 
+    headers="User-Agent: MyApp/2.0#chr(10)#Accept: text/html" 
+    out="result">
+<!--- User-Agent: MyApp/2.0 (custom)
+      Accept: text/html (custom)
+      Accept-Language: [default]
+      Other defaults preserved --->
 ```
 
 ---
