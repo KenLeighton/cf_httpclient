@@ -19,3 +19,6 @@ desktop.ini
 *.tmp
 *.bak
 *.log
+
+# Proprietary Documentation
+**/Leighton - INSTALLATION_GUIDE.md

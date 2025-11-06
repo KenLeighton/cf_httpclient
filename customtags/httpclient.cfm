@@ -7,14 +7,14 @@ Usage: <cf_httpclient url="..." method="get" out="variableName" ...>
 
 Author: Memex AI Assistant
 Date: 2025-11-03
-Version: 1.10.0 - Phase 9: 100% CFX_HTTP5 Parity (COMPLETE)
+Version: 1.00 - 100% CFX_HTTP5 Parity (COMPLETE)
 - Complete rewrite using Apache HttpClient 4.5.14
 - HttpClient instance storage for true session management
 - Automatic cookie handling via CookieStore
 - Connection pooling for performance
 - Granular timeout controls
 - TLS 1.2 explicit support (SSL=5)
-- SSL certificate validation control (SSLERRORS=y)
+- SSL certificate validation control (SSLERRORS=ok)
 - Enhanced proxy support with authentication
 - PROXYPORT parameter for explicit proxy port specification
 - REDIRECT parameter support (n=no redirects, y=follow redirects)
@@ -415,16 +415,17 @@ Required JARs (in lib/ directory):
 		<cfset variables.hasSSLConfig = false>
 		
 		<!--- Configure SSL/TLS if needed --->
-		<cfif len(trim(attributes.ssl)) gt 0 OR attributes.sslerrors eq "y" OR len(trim(attributes.certstorename)) gt 0>
+		<cfif len(trim(attributes.ssl)) gt 0 OR attributes.sslerrors eq "ok" OR len(trim(attributes.certstorename)) gt 0>
 			<cfset variables.hasSSLConfig = true>
 			<cfset sslContextBuilder = createObject("java", "org.apache.http.ssl.SSLContexts").custom()>
 			
-			<!--- Handle SSLERRORS=y (ignore certificate errors) --->
-			<cfif attributes.sslerrors eq "y">
+			<!--- Handle SSLERRORS=ok (ignore certificate errors) --->
+			<!--- CFX_HTTP5 only accepts "ok" (case-insensitive) per documentation --->
+			<cfif attributes.sslerrors eq "ok">
 				<!--- Use TrustAllStrategy which accepts ALL certificates (not just self-signed) --->
 				<!--- Available in HttpClient 4.5.4+. CF11 requires JAR upgrade from 4.5.2 to 4.5.14 --->
 				<cfif variables.debugMode>
-					<cflog file="httpclient" text="SSLERRORS=y detected, loading TrustAllStrategy">
+					<cflog file="httpclient" text="SSLERRORS=ok detected, loading TrustAllStrategy">
 				</cfif>
 				<cfset trustAllStrategy = createObject("java", "org.apache.http.conn.ssl.TrustAllStrategy").INSTANCE>
 				<cfif variables.debugMode>
@@ -434,6 +435,31 @@ Required JARs (in lib/ directory):
 				<cfif variables.debugMode>
 					<cflog file="httpclient" text="loadTrustMaterial called with TrustAllStrategy">
 				</cfif>
+			<cfelse>
+				<!--- Default SSL behavior: Use Windows certificate store (like CFX_HTTP5) --->
+				<!--- CFX_HTTP5 is a C++ native extension that uses Windows' default SSL libraries --->
+				<!--- This provides proper validation using Windows trusted root CAs --->
+				<cftry>
+					<cfif variables.debugMode>
+						<cflog file="httpclient" text="Loading Windows ROOT certificate store for default SSL validation">
+					</cfif>
+					<!--- Load Windows ROOT certificate store (trusted root CAs) --->
+					<cfset rootStore = createObject("java", "java.security.KeyStore").getInstance("Windows-ROOT")>
+					<cfset rootStore.load(javaCast("null", ""), javaCast("null", ""))>
+					<!--- Use null TrustStrategy for standard validation (validates against trust store) --->
+					<!--- This accepts valid certificate chains but rejects self-signed/expired/untrusted --->
+					<cfset sslContextBuilder.loadTrustMaterial(rootStore, javaCast("null", ""))>
+					<cfif variables.debugMode>
+						<cflog file="httpclient" text="Windows ROOT certificate store loaded with standard validation">
+					</cfif>
+					<cfcatch>
+						<!--- Fallback to default Java trust store if Windows store unavailable --->
+						<cfif variables.debugMode>
+							<cflog file="httpclient" text="Windows certificate store unavailable, using default Java trust store: #cfcatch.message#">
+						</cfif>
+						<!--- Use default trust store (no loadTrustMaterial call = default behavior) --->
+					</cfcatch>
+				</cftry>
 			</cfif>
 			
 			<!--- Handle client certificate (CERTSTORENAME, CERTSUBJSTR) --->
@@ -498,7 +524,7 @@ Required JARs (in lib/ directory):
 			</cfif>
 			
 			<!--- Create SSL socket factory --->
-			<cfif attributes.sslerrors eq "y">
+			<cfif attributes.sslerrors eq "ok">
 				<!--- No hostname verification --->
 				<cfset noopHostnameVerifier = createObject("java", "org.apache.http.conn.ssl.NoopHostnameVerifier").INSTANCE>
 				<cfset sslSocketFactory = createObject("java", "org.apache.http.conn.ssl.SSLConnectionSocketFactory").init(
@@ -689,15 +715,32 @@ Required JARs (in lib/ directory):
 		</cfif>
 		
 		<!--- Configure SSL/TLS if needed --->
-		<cfif len(trim(attributes.ssl)) gt 0 OR attributes.sslerrors eq "y" OR len(trim(attributes.certstorename)) gt 0>
+		<cfif len(trim(attributes.ssl)) gt 0 OR attributes.sslerrors eq "ok" OR len(trim(attributes.certstorename)) gt 0>
 			<cfset sslContextBuilder = createObject("java", "org.apache.http.ssl.SSLContexts").custom()>
 			
-			<!--- Handle SSLERRORS=y --->
-			<cfif attributes.sslerrors eq "y">
+			<!--- Handle SSLERRORS=ok --->
+			<!--- CFX_HTTP5 only accepts "ok" (case-insensitive) per documentation --->
+			<cfif attributes.sslerrors eq "ok">
 				<!--- Use TrustAllStrategy which accepts ALL certificates (not just self-signed) --->
 				<!--- Available in HttpClient 4.5.4+. CF11 requires JAR upgrade from 4.5.2 to 4.5.14 --->
 				<cfset trustAllStrategy = createObject("java", "org.apache.http.conn.ssl.TrustAllStrategy").INSTANCE>
 				<cfset sslContextBuilder.loadTrustMaterial(javaCast("null", ""), trustAllStrategy)>
+			<cfelse>
+				<!--- Default SSL behavior: Use Windows certificate store (like CFX_HTTP5) --->
+				<!--- CFX_HTTP5 is a C++ native extension that uses Windows' default SSL libraries --->
+				<!--- This provides proper validation using Windows trusted root CAs --->
+				<cftry>
+					<!--- Load Windows ROOT certificate store (trusted root CAs) --->
+					<cfset rootStore = createObject("java", "java.security.KeyStore").getInstance("Windows-ROOT")>
+					<cfset rootStore.load(javaCast("null", ""), javaCast("null", ""))>
+					<!--- Use null TrustStrategy for standard validation (validates against trust store) --->
+					<!--- This accepts valid certificate chains but rejects self-signed/expired/untrusted --->
+					<cfset sslContextBuilder.loadTrustMaterial(rootStore, javaCast("null", ""))>
+					<cfcatch>
+						<!--- Fallback to default Java trust store if Windows store unavailable --->
+						<!--- Use default trust store (no loadTrustMaterial call = default behavior) --->
+					</cfcatch>
+				</cftry>
 			</cfif>
 			
 			<!--- Handle client certificate (CERTSTORENAME, CERTSUBJSTR) --->
@@ -760,7 +803,7 @@ Required JARs (in lib/ directory):
 			</cfif>
 			
 			<!--- Create SSL socket factory --->
-			<cfif attributes.sslerrors eq "y">
+			<cfif attributes.sslerrors eq "ok">
 				<cfset noopHostnameVerifier = createObject("java", "org.apache.http.conn.ssl.NoopHostnameVerifier").INSTANCE>
 				<cfset sslSocketFactory = createObject("java", "org.apache.http.conn.ssl.SSLConnectionSocketFactory").init(
 					sslContext,
