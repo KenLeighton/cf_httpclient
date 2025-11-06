@@ -2,8 +2,8 @@
 
 **Drop-in replacement for CFX_HTTP5 with 100% feature parity (all 56 parameters)**
 
-**Version:** 1.10.0  
-**Date:** 2025-11-03  
+**Version:** 1.00  
+**Date:** 2025-01-06  
 **Compatibility:** Adobe ColdFusion 11+ | Lucee 5+  
 **License:** Apache License 2.0  
 
@@ -38,6 +38,7 @@
 12. [Output Parameters](#12-output-parameters)
 13. [Error Handling](#13-error-handling)
 14. [Performance Tuning](#14-performance-tuning)
+   - [INI Configuration](#145-ini-configuration)
 15. [Troubleshooting](#15-troubleshooting)
 16. [Migration from CFX_HTTP5](#16-migration-from-cfx_http5)
 17. [Complete Parameter Reference](#17-complete-parameter-reference)
@@ -111,283 +112,32 @@ The following JAR files are required (included with distribution):
 
 ### ⚠️ IMPORTANT: Adobe ColdFusion 11 Users
 
-**ColdFusion 11 ships with outdated Apache HttpClient JARs that are incompatible with cf_httpclient.** You must upgrade the server-level JARs before using cf_httpclient.
+**ColdFusion 11 ships with outdated Apache HttpClient JARs (version 4.2.5) that are incompatible with cf_httpclient.** 
 
-#### Required ColdFusion 11 JAR Upgrades
+cf_httpclient requires Apache HttpClient 4.5.14. Without upgrading, you will get `java.lang.NoSuchMethodError` exceptions.
 
-**⚠️ CRITICAL: This is a one-time, server-wide JAR replacement in your ColdFusion installation directory.**
+#### Manual JAR Upgrade
 
-**Old JARs (currently in `{cf-install-dir}\cfusion\lib\`):**
-- `httpclient-4.2.5.jar` (shipped with CF11 - incompatible)
-- `httpcore-4.2.4.jar` (shipped with CF11 - incompatible)
+**⚠️ BACKUP FIRST:** Make copies of the original JARs before replacing them.
 
-**New JARs (from cf_httpclient distribution `lib/` folder):**
-- `httpclient-4.5.14.jar` (compatible with cf_httpclient)
-- `httpcore-4.4.16.jar` (compatible with cf_httpclient)
+**Steps:**
 
-#### Understanding JAR Naming
+1. **Stop ColdFusion 11 service**
 
-**Why do the new JARs have different names?**
+2. **Navigate to:** `{cf-install-dir}\cfusion\lib\` 
+   - Example: `C:\ColdFusion11\cfusion\lib\`
 
-Apache HttpClient uses version numbers in JAR filenames to distinguish releases:
-- `httpclient-4.2.5.jar` = HttpClient version 4.2.5
-- `httpclient-4.5.14.jar` = HttpClient version 4.5.14
+3. **Back up old JARs:**
+   - Rename `httpclient-4.2.5.jar` to `httpclient-4.2.5.jar.BAK`
+   - Rename `httpcore-4.2.4.jar` to `httpcore-4.2.4.jar.BAK`
 
-**Why do we delete the old JARs?**
+4. **Copy new JARs from cf_httpclient distribution:**
+   - Copy `httpclient-4.5.14.jar` to `{cf-install-dir}\cfusion\lib\`
+   - Copy `httpcore-4.4.16.jar` to `{cf-install-dir}\cfusion\lib\`
 
-If both versions exist in `{cf-install-dir}\cfusion\lib\`, ColdFusion's classloader may load the wrong (older) version, causing `java.lang.NoSuchMethodError` exceptions. The old JARs MUST be removed to ensure CF11 uses the new 4.5.14 versions.
+5. **Start ColdFusion 11 service**
 
-**Why does this affect the entire CF11 server?**
-
-ColdFusion loads JARs from `{cf-install-dir}\cfusion\lib\` at server startup and makes them available to ALL applications. This is different from application-level JARs (which only affect one application). The upgrade ensures ALL applications can use Apache HttpClient 4.5.14.
-
-#### Upgrade Procedure
-
-**Prerequisites:**
-- Download cf_httpclient v1.10.0 distribution ZIP
-- Extract to a temporary location (e.g., `D:\cf_httpclient_v1.10.0\`)
-- Identify your ColdFusion installation directory (e.g., `C:\ColdFusion11\`)
-- Administrator/root access to stop/start ColdFusion service
-
-**Generic path placeholders used below:**
-- `{cf-install-dir}` = Your CF installation directory (e.g., `C:\ColdFusion11\`, `/opt/coldfusion11/`)
-- `{distribution-dir}` = Where you extracted cf_httpclient (e.g., `D:\cf_httpclient_v1.10.0\`)
-
----
-
-**Step 1: Stop ColdFusion Service**
-
-Stop the ColdFusion service completely before modifying JARs:
-
-```powershell
-# Windows (run as Administrator)
-net stop "ColdFusion 11 Application Server"
-
-# Linux/macOS (run as root)
-sudo /opt/coldfusion11/cfusion/bin/coldfusion stop
-```
-
-**Wait for service to stop completely** (may take 30-60 seconds).
-
----
-
-**Step 2: Backup Original JARs**
-
-Navigate to your ColdFusion lib directory and backup the old JARs by adding `.BAK` extension:
-
-```powershell
-# Windows
-cd {cf-install-dir}\cfusion\lib
-copy httpclient-4.2.5.jar httpclient-4.2.5.jar.BAK
-copy httpcore-4.2.4.jar httpcore-4.2.4.jar.BAK
-
-# Example with actual paths:
-cd C:\ColdFusion11\cfusion\lib
-copy httpclient-4.2.5.jar httpclient-4.2.5.jar.BAK
-copy httpcore-4.2.4.jar httpcore-4.2.4.jar.BAK
-
-# Linux/macOS
-cd /opt/coldfusion11/cfusion/lib
-sudo cp httpclient-4.2.5.jar httpclient-4.2.5.jar.BAK
-sudo cp httpcore-4.2.4.jar httpcore-4.2.4.jar.BAK
-```
-
-**Verify backups exist:**
-```powershell
-# Windows
-dir *.jar.BAK
-
-# Linux/macOS
-ls -l *.jar.BAK
-```
-
-You should see:
-- `httpclient-4.2.5.jar.BAK`
-- `httpcore-4.2.4.jar.BAK`
-
----
-
-**Step 3: Copy New JARs to ColdFusion lib Directory**
-
-Copy the new JAR files from your cf_httpclient distribution to ColdFusion's lib folder:
-
-```powershell
-# Windows
-copy {distribution-dir}\lib\httpclient-4.5.14.jar {cf-install-dir}\cfusion\lib\
-copy {distribution-dir}\lib\httpcore-4.4.16.jar {cf-install-dir}\cfusion\lib\
-
-# Example with actual paths:
-copy D:\cf_httpclient_v1.10.0\lib\httpclient-4.5.14.jar C:\ColdFusion11\cfusion\lib\
-copy D:\cf_httpclient_v1.10.0\lib\httpcore-4.4.16.jar C:\ColdFusion11\cfusion\lib\
-
-# Linux/macOS
-sudo cp {distribution-dir}/lib/httpclient-4.5.14.jar /opt/coldfusion11/cfusion/lib/
-sudo cp {distribution-dir}/lib/httpcore-4.4.16.jar /opt/coldfusion11/cfusion/lib/
-```
-
-**Verify new JARs exist:**
-```powershell
-# Windows
-dir httpclient-4.5.14.jar
-dir httpcore-4.4.16.jar
-
-# Linux/macOS
-ls -l httpclient-4.5.14.jar
-ls -l httpcore-4.4.16.jar
-```
-
----
-
-**Step 4: Delete Old JAR Files**
-
-Remove the old JAR versions (backups remain with `.BAK` extension):
-
-```powershell
-# Windows
-del {cf-install-dir}\cfusion\lib\httpclient-4.2.5.jar
-del {cf-install-dir}\cfusion\lib\httpcore-4.2.4.jar
-
-# Example:
-del C:\ColdFusion11\cfusion\lib\httpclient-4.2.5.jar
-del C:\ColdFusion11\cfusion\lib\httpcore-4.2.4.jar
-
-# Linux/macOS
-sudo rm /opt/coldfusion11/cfusion/lib/httpclient-4.2.5.jar
-sudo rm /opt/coldfusion11/cfusion/lib/httpcore-4.2.4.jar
-```
-
-**Verify old JARs are deleted:**
-```powershell
-# Windows
-dir httpclient-4.2.5.jar
-# Should show "File Not Found"
-
-# Linux/macOS
-ls -l httpclient-4.2.5.jar
-# Should show "No such file or directory"
-```
-
-**Final state of `{cf-install-dir}\cfusion\lib\`:**
-- ✅ `httpclient-4.5.14.jar` (NEW - active)
-- ✅ `httpcore-4.4.16.jar` (NEW - active)
-- ✅ `httpclient-4.2.5.jar.BAK` (backup of old version)
-- ✅ `httpcore-4.2.4.jar.BAK` (backup of old version)
-- ❌ `httpclient-4.2.5.jar` (deleted)
-- ❌ `httpcore-4.2.4.jar` (deleted)
-
----
-
-**Step 5: Start ColdFusion Service**
-
-Start the ColdFusion service to load the new JARs:
-
-```powershell
-# Windows (run as Administrator)
-net start "ColdFusion 11 Application Server"
-
-# Linux/macOS (run as root)
-sudo /opt/coldfusion11/cfusion/bin/coldfusion start
-```
-
-**Wait for service to fully start** (may take 1-2 minutes). Monitor logs if needed:
-- Windows: `{cf-install-dir}\cfusion\logs\coldfusion-out.log`
-- Linux/macOS: `/opt/coldfusion11/cfusion/logs/coldfusion-out.log`
-
----
-
-**Step 6: Verify JAR Upgrade**
-
-Create a test page `test_httpclient_upgrade.cfm` in your web root:
-
-```cfml
-<cfscript>
-    writeOutput("<h1>ColdFusion 11 JAR Upgrade Verification</h1>");
-    
-    try {
-        // Test 1: Load HttpVersion class (available in both 4.2.5 and 4.5.14)
-        httpVersionClass = createObject("java", "org.apache.http.HttpVersion");
-        writeOutput("<p style='color:green;'>✓ Test 1: HttpVersion class loaded successfully</p>");
-        
-        // Test 2: Load HttpClients class (ONLY available in 4.5.x, not in 4.2.5)
-        httpClientsClass = createObject("java", "org.apache.http.impl.client.HttpClients");
-        writeOutput("<p style='color:green;'>✓ Test 2: HttpClients class loaded successfully (4.5.x detected)</p>");
-        
-        // Test 3: Verify 4.5.x specific method exists
-        httpClient = httpClientsClass.createDefault();
-        writeOutput("<p style='color:green;'>✓ Test 3: createDefault() method works (4.5.x confirmed)</p>");
-        
-        // Close client
-        httpClient.close();
-        
-        writeOutput("<h2 style='color:green;'>✓✓✓ JAR Upgrade Successful! ✓✓✓</h2>");
-        writeOutput("<p>ColdFusion 11 is now using Apache HttpClient 4.5.14</p>");
-        writeOutput("<p>You can now proceed with cf_httpclient installation</p>");
-        
-    } catch (any e) {
-        writeOutput("<h2 style='color:red;'>✗✗✗ JAR Upgrade Failed ✗✗✗</h2>");
-        writeOutput("<p><strong>Error Type:</strong> #e.type#</p>");
-        writeOutput("<p><strong>Error Message:</strong> #e.message#</p>");
-        writeOutput("<p><strong>Error Detail:</strong> #e.detail#</p>");
-        
-        if (findNoCase("NoSuchMethodError", e.message)) {
-            writeOutput("<h3>Diagnosis: Old JARs Still Loaded</h3>");
-            writeOutput("<p>ColdFusion is still using HttpClient 4.2.5</p>");
-            writeOutput("<p><strong>Possible causes:</strong></p>");
-            writeOutput("<ul>");
-            writeOutput("<li>Old JARs (4.2.5, 4.2.4) were not deleted from {cf-install-dir}\cfusion\lib\</li>");
-            writeOutput("<li>New JARs (4.5.14, 4.4.16) were not copied correctly</li>");
-            writeOutput("<li>ColdFusion service was not restarted after JAR changes</li>");
-            writeOutput("</ul>");
-            writeOutput("<p><strong>Solution:</strong> Review Steps 3-5 of the upgrade procedure</p>");
-        }
-        
-        if (findNoCase("ClassNotFoundException", e.message)) {
-            writeOutput("<h3>Diagnosis: HttpClient JARs Not Found</h3>");
-            writeOutput("<p>ColdFusion cannot find Apache HttpClient classes</p>");
-            writeOutput("<p><strong>Possible causes:</strong></p>");
-            writeOutput("<ul>");
-            writeOutput("<li>New JARs were copied to wrong directory</li>");
-            writeOutput("<li>JARs are corrupted or incomplete</li>");
-            writeOutput("</ul>");
-            writeOutput("<p><strong>Solution:</strong> Verify JAR files exist in {cf-install-dir}\cfusion\lib\</p>");
-        }
-    }
-</cfscript>
-```
-
-**Expected Output:**
-```
-✓ Test 1: HttpVersion class loaded successfully
-✓ Test 2: HttpClients class loaded successfully (4.5.x detected)
-✓ Test 3: createDefault() method works (4.5.x confirmed)
-
-✓✓✓ JAR Upgrade Successful! ✓✓✓
-ColdFusion 11 is now using Apache HttpClient 4.5.14
-You can now proceed with cf_httpclient installation
-```
-
-**If verification fails:**
-1. Check `{cf-install-dir}\cfusion\lib\` directory contents
-2. Verify old JARs (4.2.5, 4.2.4) are deleted
-3. Verify new JARs (4.5.14, 4.4.16) exist
-4. Restart ColdFusion service again
-5. Re-run verification test
-
----
-
-#### Why This Upgrade is Required
-
-**Issue:** ColdFusion 11's `httpclient-4.2.5.jar` lacks critical methods used by cf_httpclient:
-- `setDefaultCookieStore()` (cookie management)
-- `setSSLContext()` (SSL/TLS configuration)
-- `setConnectionManager()` (connection pooling)
-
-**Symptoms without upgrade:**
-- `java.lang.NoSuchMethodError` exceptions
-- SSL/TLS connection failures
-- Session management errors
-
-**Impact:** The JAR upgrade affects the entire ColdFusion server, not just your application. This is a one-time server-level change.
+This is a **one-time, server-wide upgrade**. It does not affect existing CFX_HTTP5 functionality.
 
 #### ColdFusion 2016+ Users
 
@@ -430,7 +180,7 @@ cf_httpclient is deployed at the **application level**, packaged with your appli
 Create the following structure in your application root:
 
 ```
-/your-application/
+/my-application/
   /lib/
     httpclient-4.5.14.jar
     httpcore-4.4.16.jar
@@ -449,8 +199,10 @@ Copy `httpclient.cfm` from the distribution `customtags/` folder to your applica
 
 Add the following configuration to your `Application.cfc`:
 
+**Generic Template with Relative Paths:**
 ```cfml
 component {
+    // This is to enable the cf_httpclient drop-in replacement for cfx_http5
     this.name = "MyApplication";
     
     // Configure custom tag path
@@ -459,10 +211,29 @@ component {
     // Load HttpClient JAR files
     this.javaSettings = {
         loadPaths = [
-            expandPath("./lib/httpclient-4.5.14.jar"),
-            expandPath("./lib/httpcore-4.4.16.jar"),
-            expandPath("./lib/commons-logging-1.2.jar"),
-            expandPath("./lib/commons-codec-1.11.jar")
+            expandPath("../[application-name]/ColdFusion CustomTags/cf_httpclient/lib/httpclient-4.5.14.jar"),
+            expandPath("../[application-name]/ColdFusion CustomTags/cf_httpclient/lib/httpcore-4.4.16.jar"),
+            expandPath("../[application-name]/ColdFusion CustomTags/cf_httpclient/lib/commons-logging-1.2.jar"),
+            expandPath("../[application-name]/ColdFusion CustomTags/cf_httpclient/lib/commons-codec-1.11.jar")
+        ],
+        reloadOnChange = false
+    };
+}
+```
+
+**Example with Absolute Paths:**
+```cfml
+component {
+    this.name = "MyApplication";
+    
+    this.customtagpaths = expandPath("./customtags");
+    
+    this.javaSettings = {
+        loadPaths = [
+            "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\httpclient-4.5.14.jar",
+            "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\httpcore-4.4.16.jar",
+            "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\commons-logging-1.2.jar",
+            "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\commons-codec-1.11.jar"
         ],
         reloadOnChange = false
     };
@@ -473,58 +244,57 @@ component {
 
 If your application uses `Application.cfm` instead of `Application.cfc`, use this configuration:
 
+**Generic Template:**
 ```cfml
-<cfapplication name="MyApplication" 
-    sessionmanagement="yes" 
-    sessiontimeout="##createTimeSpan(0,0,30,0)##">
+<!--- This is to enable the cf_httpclient drop-in replacement for cfx_http5. --->
+<!--- Custom tag path set in CF Administrator: Extensions > Custom Tag Paths > [your-webroot]\CustomTags --->
+<!--- Minimal cfapplication for JAR loading support --->
+<!--- NOTE: setclientcookies="no" disables automatic CFID/CFTOKEN cookies only. Manual cookie handling via <cfcookie> and cookie scope still works. --->
+<cfapplication name="#variables.ApplicationName#" sessionmanagement="no" setclientcookies="no">
 
-<!--- Set custom tag path --->
-<cfset request.customtagpath = expandPath("./customtags")>
-
-<!--- Load HttpClient JARs (one-time setup) --->
-<cfif NOT structKeyExists(application, "httpClientLoaded")>
-    <cflock scope="application" type="exclusive" timeout="10">
-        <cfif NOT structKeyExists(application, "httpClientLoaded")>
-            <cfscript>
-                // Define JAR paths
-                jarPaths = [
-                    expandPath("./lib/httpclient-4.5.14.jar"),
-                    expandPath("./lib/httpcore-4.4.16.jar"),
-                    expandPath("./lib/commons-logging-1.2.jar"),
-                    expandPath("./lib/commons-codec-1.11.jar")
-                ];
-                
-                // Load JARs using JavaLoader or URLClassLoader
-                urls = [];
-                for (path in jarPaths) {
-                    file = createObject("java", "java.io.File").init(path);
-                    arrayAppend(urls, file.toURI().toURL());
-                }
-                
-                // Create URL array
-                urlArray = createObject("java", "java.net.URL").getClass().newInstance(arrayLen(urls));
-                for (i = 1; i <= arrayLen(urls); i++) {
-                    urlArray[i-1] = urls[i];
-                }
-                
-                // Create class loader
-                parentLoader = createObject("java", "java.lang.Thread").currentThread().getContextClassLoader();
-                application.httpClientClassLoader = createObject("java", "java.net.URLClassLoader").init(urlArray, parentLoader);
-                application.httpClientLoaded = true;
-            </cfscript>
-        </cfif>
-    </cflock>
-</cfif>
+<cfset this.javaSettings = {
+    loadPaths = [
+        "[parent-dir]\[application-name]\ColdFusion CustomTags\cf_httpclient\lib\httpclient-4.5.14.jar",
+        "[parent-dir]\[application-name]\ColdFusion CustomTags\cf_httpclient\lib\httpcore-4.4.16.jar",
+        "[parent-dir]\[application-name]\ColdFusion CustomTags\cf_httpclient\lib\commons-logging-1.2.jar",
+        "[parent-dir]\[application-name]\ColdFusion CustomTags\cf_httpclient\lib\commons-codec-1.11.jar"
+    ],
+    reloadOnChange = false
+}>
 ```
 
-**For Application.cfm usage**, call the custom tag using `cfmodule`:
-
+**Example with Absolute Paths:**
 ```cfml
-<cfmodule template="./customtags/httpclient.cfm" 
-    url="https://api.example.com/data" 
-    method="get" 
-    out="result">
+<!--- This is to enable the cf_httpclient drop-in replacement for cfx_http5. --->
+<!--- Custom tag path set in CF Administrator: Extensions > Custom Tag Paths > C:\myApplication\Code\CustomTags --->
+<cfapplication name="#variables.ApplicationName#" sessionmanagement="no" setclientcookies="no">
+
+<cfset this.javaSettings = {
+    loadPaths = [
+        "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\httpclient-4.5.14.jar",
+        "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\httpcore-4.4.16.jar",
+        "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\commons-logging-1.2.jar",
+        "C:\myApplication\ColdFusion CustomTags\cf_httpclient\lib\commons-codec-1.11.jar"
+    ],
+    reloadOnChange = false
+}>
 ```
+
+**Why This Approach?**
+
+**CF11 Limitation:** Application.cfm does not support `this.customtagpaths` unless "Enable Per App Settings" is enabled in CF Administrator (requires server restart).
+
+**Solution:** 
+- Custom tag paths: Set server-wide in CF Administrator (no restart)
+- JAR loading: Set per-application via `this.javaSettings` in Application.cfm
+- Minimal `<cfapplication>`: Required for `this.javaSettings` to work, but configured to not interfere with existing application logic
+
+**What the `<cfapplication>` Tag Does:**
+- `sessionmanagement="no"` - Does NOT create session scope or interfere with existing session handling
+- `setclientcookies="no"` - Disables automatic CFID/CFTOKEN cookies (manual `<cfcookie>` still works)
+- Enables `this.javaSettings` to load JAR files
+
+This minimal configuration **will not affect** your existing application logic, routing, or cookie handling.
 
 ### Step 3: Use cf_httpclient
 
@@ -577,7 +347,7 @@ Test your installation with this simple page:
 
 ```cfml
 <!--- test_install.cfm --->
-<cf_httpclient url="https://httpbin.org/get" method="get" out="result">
+<cf_httpclient url="https://example.com/api/get" method="get" out="result">
 
 <cfoutput>
     <p>Status: #status#</p>
@@ -801,7 +571,7 @@ Performs DNS lookup for a hostname.
 ```cfml
 <cf_httpclient 
     fnc="dns"
-    url="https://www.google.com"
+    url="https://example.com"
     out="ipAddress">
 
 <cfoutput>
@@ -820,7 +590,7 @@ Performs DNS lookup for a hostname.
 
 **Example:**
 ```cfml
-<cf_httpclient fnc="dns" url="https://httpbin.org" out="ip">
+<cf_httpclient fnc="dns" url="https://example.com" out="ip">
 <!--- ip = "52.20.222.128" --->
 ```
 
@@ -1055,69 +825,16 @@ Or using `<chr(10)>` for line breaks:
 
 Sessions enable automatic cookie management and connection reuse across multiple requests.
 
-### Creating a Session
-
 ```cfml
-<!--- Login request with session --->
-<cf_httpclient 
-    url="https://example.com/login"
-    method="post"
-    body="username=admin&password=secret"
-    session="user-session"
-    out="loginResponse">
+<!--- First request: Start session --->
+<cf_httpclient url="https://www.example.com/form?mode=edit" method="get" out="content" outhead="header" session="start" cookies="Y" ssl="5">
 
-<cfif status EQ "OK">
-    <cfoutput>Login successful. Session: user-session</cfoutput>
-</cfif>
+<!--- Subsequent request: Submit form using session --->
+<cf_httpclient url="https://www.example.com/form" headers="Content-Type: application/x-www-form-urlencoded" body="field1=#value1#&field2=#value2#" method="post" out="content" session="#httpsession#" cookies="Y" ssl="5">
+
+<!--- Close session when done --->
+<cf_httpclient FNC="close" session="#httpsession#">
 ```
-
-### Using a Session
-
-```cfml
-<!--- Subsequent requests automatically use cookies --->
-<cf_httpclient 
-    url="https://example.com/dashboard"
-    method="get"
-    session="user-session"
-    out="dashboardData">
-
-<!--- Another request with same session --->
-<cf_httpclient 
-    url="https://example.com/profile"
-    method="get"
-    session="user-session"
-    out="profileData">
-```
-
-### Closing a Session
-
-```cfml
-<!--- Close session and clean up resources --->
-<cf_httpclient 
-    fnc="close"
-    session="user-session">
-
-<!--- Or use SESSIONEND parameter --->
-<cf_httpclient 
-    url="https://example.com/logout"
-    method="post"
-    session="user-session"
-    sessionend="y"
-    out="logoutResponse">
-```
-
-### Session Benefits
-
-- ✅ **Automatic cookie management** - No manual cookie handling required
-- ✅ **Connection reuse** - Faster subsequent requests (20% performance improvement)
-- ✅ **State persistence** - Maintains authentication across requests
-- ✅ **Memory efficient** - Proper resource cleanup
-
-### Session Limitations
-
-- Sessions are stored in `server` scope (requires locking)
-- Maximum 100 concurrent sessions (configurable)
-- Sessions persist until explicitly closed or server restart
 
 ---
 
@@ -1260,17 +977,61 @@ Execute HTTP requests in the background without blocking the main thread.
 - `ssl="4"` - TLS 1.0 (legacy)
 - `ssl="5"` - TLS 1.2 (recommended, default)
 
-### Ignore SSL Certificate Errors
+### SSL Certificate Validation
 
-**⚠ WARNING: Only use in development/testing!**
+**Default Behavior:** cf_httpclient uses **Windows certificate store validation** by default (matching CFX_HTTP5 behavior). This validates certificates against Windows' trusted root CAs and is the recommended setting for production.
 
 ```cfml
+<!--- Standard certificate validation using Windows trust store (default) --->
+<cf_httpclient 
+    url="https://secure.example.com/api"
+    method="get"
+    out="response">
+```
+
+**How It Works:**
+- cf_httpclient loads the **Windows ROOT certificate store** (trusted root CAs)
+- Validates certificates using standard validation rules:
+  - ✅ Accepts valid CA-signed certificates from Windows trust store
+  - ❌ Rejects self-signed certificates
+  - ❌ Rejects expired certificates
+  - ❌ Rejects certificates from untrusted CAs
+- Matches CFX_HTTP5 behavior (CFX_HTTP5 uses Windows' native SSL libraries)
+
+**Permissive Validation (Invalid/Expired/Self-Signed Certificates):**
+
+```cfml
+<!--- Ignore ALL SSL errors (invalid, expired, self-signed, etc.) --->
 <cf_httpclient 
     url="https://self-signed.example.com/api"
     method="get"
-    sslerrors="y"
+    sslerrors="ok"
     out="response">
 ```
+
+**SSLERRORS Parameter:**
+- **Default (omitted)** - Standard validation using Windows ROOT certificate store
+  - Accepts valid CA-signed certificates
+  - Rejects self-signed, expired, or untrusted certificates
+- **`sslerrors="ok"`** - Permissive validation, ignores ALL SSL errors
+  - Use only for invalid, expired, or self-signed certificates
+  - Disables hostname verification
+  - CFX_HTTP5 compatible (SSLERRORS="OK")
+
+**⚠ Production Best Practice:** 
+- **Omit `sslerrors` parameter** in production with proper CA-signed certificates
+- **Only use `sslerrors="ok"`** for development/testing with invalid certificates
+- Ensure Windows trust store is up-to-date with current root CAs
+
+**📋 Validation Examples:**
+
+| Certificate Type | Default (no sslerrors) | sslerrors="ok" |
+|-----------------|------------------------|----------------|
+| Valid CA-signed (e.g., google.com) | ✅ Accepts | ✅ Accepts |
+| Self-signed | ❌ Rejects | ✅ Accepts |
+| Expired | ❌ Rejects | ✅ Accepts |
+| Untrusted root | ❌ Rejects | ✅ Accepts |
+| Wrong hostname | ❌ Rejects | ✅ Accepts |
 
 ### Client Certificate Authentication (Windows)
 
@@ -1317,9 +1078,10 @@ Execute HTTP requests in the background without blocking the main thread.
 ### SSL/TLS Best Practices
 
 - ✅ Always use TLS 1.2 or later in production
-- ✅ Never ignore SSL errors in production (`sslerrors="n"`)
+- ✅ Use strict validation in production (omit `sslerrors` parameter)
 - ✅ Use proper CA-signed certificates
 - ✅ Keep certificate stores updated
+- ✅ Only use `sslerrors="ok"` for development with self-signed certificates
 - ⚠ Client certificates only supported on Windows
 
 ---
@@ -1927,6 +1689,253 @@ Using sessions provides ~20% performance improvement for subsequent requests:
 
 ---
 
+## 14.5. INI Configuration
+
+### Overview
+
+cf_httpclient supports **INI file configuration** compatible with CFX_HTTP5's `cfxhttp5.ini` format. This allows you to set default values for tag parameters and HTTP headers in a centralized configuration file.
+
+**Key Benefits:**
+- Centralized configuration for all cf_httpclient tags
+- Environment-specific settings (dev/staging/production)
+- Zero code changes - existing tags work unchanged
+- CFX_HTTP5 migration friendly - reuse existing cfxhttp5.ini
+
+### INI File Location
+
+cf_httpclient looks for configuration in this priority order:
+
+1. **INIFILE parameter** - Custom path specified in tag
+2. **Application directory** - `/config/cf_httpclient.ini`
+3. **Built-in defaults** - If no INI file found
+
+```cfml
+<!--- Use custom INI file --->
+<cf_httpclient 
+    url="https://api.example.com/data"
+    method="get"
+    inifile="/custom/path/myconfig.ini"
+    out="response">
+
+<!--- Use default location: /config/cf_httpclient.ini --->
+<cf_httpclient 
+    url="https://api.example.com/data"
+    method="get"
+    out="response">
+```
+
+### INI File Format
+
+The INI file contains two sections: `[SERVER]` and `[HEADERS]`.
+
+**Example: config/cf_httpclient.ini**
+
+```ini
+; cf_httpclient Configuration File
+; Comments start with semicolon
+
+[SERVER]
+; TCP connection mode: Y=Keep-Alive, N=Close
+Keep-Alive=Y
+
+; URL parameter decoding: Y=Decode, E=Escape, N=No change
+URLDecode=N
+
+; UTF-8 mode: Y=UTF-8 (CF MX+), N=System code page (CF5)
+UTF=Y
+
+; Thread count (for reference only - cf_httpclient uses connection pooling)
+nThreads=5
+
+[HEADERS]
+; Default HTTP headers (numbered sequentially)
+Header1=Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, */*
+Header2=Accept-Language: en-us
+Header3=Content-Type: application/x-www-form-urlencoded
+Header4=User-Agent: Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0)
+Header5=Pragma: no-cache
+Header6=Cache-Control: no-cache
+Header7=Accept-Encoding: gzip
+```
+
+### SERVER Section Parameters
+
+| Parameter | Values | Maps To | Description |
+|-----------|--------|---------|-------------|
+| `Keep-Alive` | Y/N | ALIVE | Default connection mode (Y=reuse, N=close) |
+| `URLDecode` | Y/E/N | URLDECODE | URL parameter handling (Y=decode, E=escape, N=none) |
+| `UTF` | Y/N | UTF | Character encoding (Y=UTF-8, N=system code page) |
+| `nThreads` | 1-256 | (reference) | For CFX_HTTP5 compatibility (not used by cf_httpclient) |
+
+### HEADERS Section
+
+Default HTTP headers sent with every request. Headers must be numbered sequentially starting at `Header1`.
+
+**Important:** 
+- Headers must be numbered without gaps (Header1, Header2, Header3, ...)
+- Parsing stops at first missing number
+- Tag HEADERS parameter overrides INI headers
+- Individual headers can be deleted via HEADERS parameter
+
+### Priority Order
+
+Settings are applied in this priority (highest to lowest):
+
+1. **Tag parameters** - Explicitly passed to `<cf_httpclient>`
+2. **INI file values** - From cf_httpclient.ini
+3. **Built-in defaults** - Hardcoded in tag
+
+**Example:**
+```ini
+; config/cf_httpclient.ini
+[SERVER]
+Keep-Alive=N
+UTF=N
+```
+
+```cfml
+<!--- alive="n" from INI, utf="y" from tag parameter --->
+<cf_httpclient 
+    url="https://api.example.com"
+    method="get"
+    utf="y"
+    out="response">
+```
+
+Result: `alive="n"` (from INI), `utf="y"` (from tag parameter - overrides INI)
+
+### Caching Behavior
+
+**Performance optimized:** INI file is parsed once and cached in `application` scope with automatic file change detection.
+
+1. **First request:** Parse INI file and cache
+2. **Subsequent requests:** Use cached version (very fast)
+3. **File modified:** Automatic reload on next request
+4. **Thread-safe:** Uses `cflock` for concurrent access
+
+**Cache key:** `application.cf_httpclient_ini_cache`
+
+To force reload: `applicationStop()` or restart application
+
+### Environment-Specific Configuration
+
+Use different INI files per environment:
+
+**Development:**
+```cfml
+<!--- Application.cfc --->
+component {
+    this.name = "MyApp";
+    
+    function onApplicationStart() {
+        // Set environment-specific INI path
+        application.iniPath = "/config/cf_httpclient.dev.ini";
+    }
+}
+```
+
+```cfml
+<!--- Use environment-specific INI --->
+<cf_httpclient 
+    url="https://api.example.com"
+    method="get"
+    inifile="#application.iniPath#"
+    out="response">
+```
+
+**Production:**
+```
+/config/cf_httpclient.prod.ini
+```
+
+### CommandBox Deployment
+
+For CommandBox ephemeral servers, place INI file in your **application directory** (not server directory):
+
+```
+my-application/
+├── Application.cfc
+├── customtags/
+│   └── httpclient.cfm
+├── config/
+│   └── cf_httpclient.ini  ← Persists across server restarts
+└── lib/
+    └── *.jar
+```
+
+INI file is portable across CommandBox instances and survives server deletion.
+
+### Migrating from CFX_HTTP5
+
+If you have an existing `cfxhttp5.ini` file:
+
+1. Copy `cfxhttp5.ini` to `/config/cf_httpclient.ini`
+2. No changes needed - format is identical
+3. Remove server-wide installation (if applicable)
+4. Test with existing code
+
+**Note:** `nThreads` parameter is ignored (cf_httpclient uses automatic connection pooling).
+
+### Troubleshooting INI Configuration
+
+**INI file not found:**
+- Verify path: `expandPath("/config/cf_httpclient.ini")`
+- Check file exists and is readable
+- Tag will silently use built-in defaults
+
+**Changes not applying:**
+- Clear application cache: `applicationStop()`
+- Verify file timestamp changed
+- Check for parse errors (silent failure)
+
+**Headers not loading:**
+- Ensure sequential numbering (Header1, Header2, Header3, ...)
+- No gaps allowed (Header1, Header3 = only 1 header loaded)
+- Verify `[HEADERS]` section exists
+
+**Performance:**
+- INI parsing is cached - minimal overhead
+- File change detection via timestamp comparison
+- Use INIFILE parameter only when needed
+
+### Complete Example
+
+**config/cf_httpclient.ini:**
+```ini
+[SERVER]
+Keep-Alive=Y
+URLDecode=N
+UTF=Y
+
+[HEADERS]
+Header1=Accept: application/json
+Header2=User-Agent: MyApp/1.0
+Header3=Accept-Encoding: gzip
+```
+
+**Application code:**
+```cfml
+<!--- Uses INI defaults (alive="y", utf="y", default headers) --->
+<cf_httpclient 
+    url="https://api.example.com/data"
+    method="get"
+    out="response">
+
+<!--- Override INI defaults with tag parameters --->
+<cf_httpclient 
+    url="https://api.example.com/data"
+    method="get"
+    alive="n"
+    headers="Content-Type: application/xml"
+    out="response">
+```
+
+Result:
+- First request: Uses INI defaults
+- Second request: Overrides `alive` and adds custom header
+
+---
+
 ## 15. Troubleshooting
 
 ### Common Issues
@@ -2067,7 +2076,7 @@ Test if the tag is working:
 ```cfml
 <!--- Basic health check --->
 <cf_httpclient 
-    url="https://httpbin.org/get"
+    url="https://example.com/api/get"
     method="get"
     timeout="10000"
     out="result">
@@ -2243,139 +2252,71 @@ This section provides practical find/replace patterns for migrating common CFX_H
 
 **Original CFX_HTTP5 Code:**
 ```cfml
-<cfx_http5 url="https://##variables.ApplicationURL##/BatchJobs/BidSolicitationsProcessingStateOfNorthCarolinaEVP.CFM" method="get" async="y" sslerrors="ok">
+<cfx_http5 url="https://api.example.com/process" method="get" async="y" sslerrors="ok">
 ```
 
 **Migrated cf_httpclient Code:**
 ```cfml
-<cf_httpclient url="https://##variables.ApplicationURL##/BatchJobs/BidSolicitationsProcessingStateOfNorthCarolinaEVP.CFM" method="get" async="y" sslerrors="ok">
+<cf_httpclient url="https://api.example.com/process" method="get" async="y" sslerrors="ok">
 ```
 
 **Find/Replace Pattern:**
-- **Find:** `<cfx_http5 url="https://##variables.ApplicationURL##/BatchJobs/BidSolicitationsProcessingStateOfNorthCarolinaEVP.CFM" method="get" async="y" sslerrors="ok">`
-- **Replace:** `<cf_httpclient url="https://##variables.ApplicationURL##/BatchJobs/BidSolicitationsProcessingStateOfNorthCarolinaEVP.CFM" method="get" async="y" sslerrors="ok">`
+- **Find:** `<cfx_http5`
+- **Replace:** `<cf_httpclient`
 
 **Notes:**
 - `async="y"` - Fires asynchronous request (no response data captured)
-- `sslerrors="ok"` - Accepts self-signed or invalid SSL certificates
+- `sslerrors="ok"` - Accepts self-signed or invalid SSL certificates (CFX_HTTP5 compatible)
 - Perfect for background batch job triggers
-- No changes to logic required - drop-in replacement
+- **No parameter changes required** - true drop-in replacement
 
 ---
 
-### Example 2: GET with Cookie and Session Start
+### Example 2: Session Start
 
 **Original CFX_HTTP5 Code:**
 ```cfml
-<cfx_http5 url="https://www.cityofboston.gov" method="get" out="cfhttpfilecontent" cookie="Y" session="start">
+<cfx_http5 url="https://www.example.com/Module/Page/en" method="get" out="cfhttpfilecontent" outhead="cfhttpheader" session="start" cookies="Y" ssl="5">
 ```
 
 **Migrated cf_httpclient Code:**
 ```cfml
-<cf_httpclient url="https://www.cityofboston.gov" method="get" out="cfhttpfilecontent" cookie="Y" session="start">
+<cf_httpclient url="https://www.example.com/Module/Page/en" method="get" out="cfhttpfilecontent" outhead="cfhttpheader" session="start" cookies="Y" ssl="5">
 ```
-
-**Find/Replace Pattern:**
-- **Find:** `<cfx_http5 url="https://www.cityofboston.gov" method="get" out="cfhttpfilecontent" cookie="Y" session="start">`
-- **Replace:** `<cf_httpclient url="https://www.cityofboston.gov" method="get" out="cfhttpfilecontent" cookie="Y" session="start">`
 
 **What This Does:**
-1. **`session="start"`** - Creates a new HTTP session and returns session ID in `httpsession` variable
-2. **`cookie="Y"`** - Enables automatic cookie handling (stores Set-Cookie headers)
-3. **`out="cfhttpfilecontent"`** - Stores response body in variable named `cfhttpfilecontent`
-
-**After Execution:**
-```cfml
-<cfoutput>
-    Session ID: ##httpsession##<br>
-    Status: ##status##<br>
-    HTTP Status: ##httpstatus##<br>
-    Content Length: ##len(cfhttpfilecontent)## bytes
-</cfoutput>
-```
-
-**Important:** Save the `httpsession` variable to reuse the session in subsequent requests.
+- Creates a new HTTP session and returns session ID in `httpsession` variable
+- Use `session="start"` for first request only
 
 ---
 
-### Example 3: Session-Based Request with Error Handling
+### Example 3: Subsequent Session Request
 
 **Original CFX_HTTP5 Code:**
 ```cfml
-<cfx_http5 url="https://www.cityofboston.gov/purchasing/bid.asp" method="get" out="cfhttpfilecontent" 
-cookie="Y" session="##httpsession##">
-
-<cfif status eq "ER">
-<!--- Close the session or a massive resource leak will occur. --->
-<cfx_http5 FNC="close" session="##httpsession##">
-<cfexit>
-</cfif>
+<cfx_http5 url="https://www.example.com/Module/Page/en/Search/Results?status=Open&limit=100&start=0&dir=DESC&sort=DateClosing" headers="Content-Type: application/x-www-form-urlencoded" body="__RequestVerificationToken=#URLEncodedFormat(variables.RequestVerificationToken)#" method="post" out="cfhttpfilecontent" outhead="cfhttpheader" session="#httpsession#" cookies="Y" ssl="5">
 ```
 
 **Migrated cf_httpclient Code:**
 ```cfml
-<cf_httpclient url="https://www.cityofboston.gov/purchasing/bid.asp" method="get" out="cfhttpfilecontent" 
-cookie="Y" session="##httpsession##">
-
-<cfif status eq "ER">
-<!--- Close the session or a massive resource leak will occur. --->
-<cf_httpclient FNC="close" session="##httpsession##">
-<cfexit>
-</cfif>
+<cf_httpclient url="https://www.example.com/Module/Page/en/Search/Results?status=Open&limit=100&start=0&dir=DESC&sort=DateClosing" headers="Content-Type: application/x-www-form-urlencoded" body="__RequestVerificationToken=#URLEncodedFormat(variables.RequestVerificationToken)#" method="post" out="cfhttpfilecontent" outhead="cfhttpheader" session="#httpsession#" cookies="Y" ssl="5">
 ```
-
-**Find/Replace Patterns:**
-
-**Pattern 1 - Session Request:**
-- **Find:** `<cfx_http5 url="https://www.cityofboston.gov/purchasing/bid.asp" method="get" out="cfhttpfilecontent"`
-- **Replace:** `<cf_httpclient url="https://www.cityofboston.gov/purchasing/bid.asp" method="get" out="cfhttpfilecontent"`
-
-**Pattern 2 - Session Close:**
-- **Find:** `<cfx_http5 FNC="close" session="##httpsession##">`
-- **Replace:** `<cf_httpclient FNC="close" session="##httpsession##">`
 
 **What This Does:**
-1. **`session="##httpsession##"`** - Reuses the HTTP session created in Example 2
-2. **Automatic cookie handling** - All cookies from previous request are sent automatically
-3. **Error handling** - Checks if `status eq "ER"` (error status)
-4. **Resource cleanup** - Closes session to prevent memory leaks
+- Reuses the HTTP session created in Example 2
+- Use `session="#httpsession#"` for all subsequent requests
 
-**Complete Working Example:**
+**Complete Session Example:**
 ```cfml
-<!--- Step 1: Start session and get homepage --->
-<cf_httpclient url="https://www.cityofboston.gov" method="get" out="homepage" cookie="Y" session="start">
+<!--- First request: Start session --->
+<cf_httpclient url="https://www.example.com/Module/Page/en" method="get" out="cfhttpfilecontent" outhead="cfhttpheader" session="start" cookies="Y" ssl="5">
 
-<cfif status eq "ER">
-    <cfoutput>Error loading homepage: ##httpstatus##</cfoutput>
-    <cfabort>
-</cfif>
+<!--- Subsequent request: Reuse session --->
+<cf_httpclient url="https://www.example.com/Module/Page/en/Search/Results?status=Open&limit=100&start=0&dir=DESC&sort=DateClosing" headers="Content-Type: application/x-www-form-urlencoded" body="__RequestVerificationToken=#URLEncodedFormat(variables.RequestVerificationToken)#" method="post" out="cfhttpfilecontent" outhead="cfhttpheader" session="#httpsession#" cookies="Y" ssl="5">
 
-<!--- Step 2: Navigate to specific page using same session --->
-<cf_httpclient url="https://www.cityofboston.gov/purchasing/bid.asp" method="get" out="bidpage" 
-cookie="Y" session="##httpsession##">
-
-<cfif status eq "ER">
-    <!--- Close the session or a massive resource leak will occur. --->
-    <cf_httpclient FNC="close" session="##httpsession##">
-    <cfoutput>Error loading bid page: ##httpstatus##</cfoutput>
-    <cfabort>
-</cfif>
-
-<!--- Step 3: Process the page content --->
-<cfoutput>
-    Successfully loaded bid page<br>
-    Content length: ##len(bidpage)## bytes<br>
-</cfoutput>
-
-<!--- Step 4: Always close session when done --->
-<cf_httpclient FNC="close" session="##httpsession##">
+<!--- Close session when done --->
+<cf_httpclient FNC="close" session="#httpsession#">
 ```
-
-**Best Practices:**
-- ✅ Always check `status` after each request
-- ✅ Always close sessions using `FNC="close"` to prevent memory leaks
-- ✅ Store `httpsession` in a persistent variable (e.g., session scope) for multi-page workflows
-- ✅ Use try/catch blocks for robust error handling
 
 ---
 
@@ -2424,9 +2365,9 @@ Create a test script to compare results:
 ```cfml
 <!--- test_migration.cfm --->
 <cfset testUrls = [
-    "https://www.google.com",
-    "https://httpbin.org/get",
-    "https://api.github.com"
+    "https://www.example.com",
+    "https://example.com/api/get",
+    "https://api.example.com"
 ]>
 
 <cfloop array="##testUrls##" index="testUrl">
@@ -2523,6 +2464,28 @@ Use this checklist when migrating:
 - Keep CFX_HTTP5 DLL in place initially
 - Gradual rollout (test → staging → production)
 - Monitor for 2 weeks before removing CFX_HTTP5
+
+---
+
+### Example 6.5: Session Usage
+
+Sessions enable connection reuse and automatic cookie handling across multiple requests.
+
+```cfml
+<!--- First request: Start session --->
+<cf_httpclient url="https://www.example.com/Module/Page/en" method="get" out="cfhttpfilecontent" outhead="cfhttpheader" session="start" cookies="Y" ssl="5">
+
+<!--- Subsequent request: Reuse session --->
+<cf_httpclient url="https://www.example.com/Module/Page/en/Search/Results?status=Open&limit=100&start=0&dir=DESC&sort=DateClosing" headers="Content-Type: application/x-www-form-urlencoded" body="__RequestVerificationToken=#URLEncodedFormat(variables.RequestVerificationToken)#" method="post" out="cfhttpfilecontent" outhead="cfhttpheader" session="#httpsession#" cookies="Y" ssl="5">
+
+<!--- Close session when done --->
+<cf_httpclient FNC="close" session="#httpsession#">
+```
+
+**Key Points:**
+- Use `session="start"` for first request
+- Use `session="#httpsession#"` for subsequent requests
+- Always close sessions with `FNC="close"`  
 
 ---
 
@@ -2669,9 +2632,9 @@ For Application.cfm users, create a helper to simplify session management:
 <cfinclude template="includes/http_session_helper.cfm">
 
 <!--- In your page --->
-<cfset httpSessionStart("https://www.cityofboston.gov")>
-<cfset httpSessionRequest("https://www.cityofboston.gov/purchasing/bid.asp", "get", "bidpage")>
-<cfoutput>##len(bidpage)## bytes loaded</cfoutput>
+<cfset httpSessionStart("https://www.example.com")>
+<cfset httpSessionRequest("https://www.example.com/data", "get", "datapage")>
+<cfoutput>##len(datapage)## bytes loaded</cfoutput>
 <cfset httpSessionClose()>
 ```
 
@@ -2707,7 +2670,7 @@ For Application.cfm users, create a helper to simplify session management:
 | **PROXYUSER** | String | - | Proxy authentication username |
 | **PROXYPASS** | String | - | Proxy authentication password |
 | **SSL** | Number | 5 | SSL/TLS version (5 = TLS 1.2) |
-| **SSLERRORS** | String | "N" | "Y" = ignore SSL certificate errors |
+| **SSLERRORS** | String | "" | "" = Windows trust store validation (default), "ok" = ignore ALL SSL errors (invalid, expired, self-signed) |
 | **CERTSTORENAME** | String | - | Windows certificate store name |
 | **CERTSUBJSTR** | String | - | Certificate subject filter |
 | **UTF** | String | "Y" | "Y" = UTF-8, "N" = ISO-8859-1 |
@@ -2729,6 +2692,7 @@ For Application.cfm users, create a helper to simplify session management:
 | **FILEPASS** | String | - | File server password |
 | **FILEDOMAIN** | String | - | File server domain (Windows) |
 | **BASE64** | String | "N" | "Y" = Base64 encode response |
+| **INIFILE** | String | - | Custom INI file path (for configuration) |
 
 ### Output Variables
 
@@ -2779,7 +2743,7 @@ Set in caller scope after each request:
     out="downloads/file.pdf" file="y">
 
 <!--- DNS lookup --->
-<cf_httpclient fnc="dns" url="https://www.google.com" out="ipAddress">
+<cf_httpclient fnc="dns" url="https://www.example.com" out="ipAddress">
 ```
 
 ### HTTP Status Codes
@@ -2865,8 +2829,8 @@ See `lib/LICENSE.txt` and `lib/NOTICE.txt` in the distribution package for Apach
 
 ### cf_httpclient Implementation
 
-**Version:** 1.10.0  
-**Date:** 2025-11-03  
+**Version:** 1.00  
+**Date:** 2025-01-06  
 **Compatibility:** Adobe ColdFusion 11+ | Lucee 5+  
 **Purpose:** Drop-in replacement for CFX_HTTP5  
 **Maintenance Status:** Not under active development
