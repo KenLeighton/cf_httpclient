@@ -242,12 +242,104 @@ component {
 
 ### Step 2 (Alternative): Configure Application.cfm
 
-If your application uses `Application.cfm` instead of `Application.cfc`, use this configuration:
+If your application uses `Application.cfm` instead of `Application.cfc`, you must configure custom tag paths in the CF Administrator **before** updating Application.cfm.
+
+#### Setting Custom Tag Paths in CF Administrator
+
+**Adobe ColdFusion (all versions):**
+
+1. Open CF Administrator: `http://[server]/CFIDE/administrator/`
+2. Navigate to: **Extensions** > **Custom Tag Paths**
+3. Click **"Add Path"** button
+4. Add your application's CustomTags directory:
+   - Example with relative path: `../myApplication/customtags`
+   - Example with absolute path: `C:\myApplication\customtags`
+5. Click **"Submit"**
+6. **No server restart needed**
+
+**Multiple Applications:**
+- Add each application's CustomTags directory as a separate path
+- Example paths:
+  - `C:\app1\customtags`
+  - `C:\app2\customtags`
+  - `C:\app3\customtags`
+
+**Note:** Leave the default CF custom tag path (e.g., `C:\ColdFusion11\cfusion\CustomTags`) in place. Server-wide custom tags remain accessible.
+
+**Lucee (Two Configuration Options):**
+
+Lucee supports custom tag paths through **both** Administrator configuration and Application.cfc settings. You can use either method or combine them.
+
+**Option 1: Lucee Administrator (Server-wide or Web Context)**
+
+**Server Administrator** (affects all web contexts):
+1. Open Lucee Server Administrator: `http://[server]:[port]/lucee/admin/server.cfm`
+2. Navigate to: **Archives & Resource** > **Custom Tags** > **Resource**
+3. Enter the directory path where your custom tags are located:
+   - Example: `C:\myApplication\customtags`
+   - Or relative to web root: `{web-root-directory}/customtags`
+4. Click **"Save"**
+5. **No server restart needed**
+
+**Web Administrator** (affects single web context):
+1. Open Lucee Web Administrator: `http://[server]:[port]/lucee/admin/web.cfm`
+2. Navigate to: **Archives & Resource** > **Custom Tags** > **Resource**
+3. Enter the directory path where your custom tags are located
+4. Click **"Save"**
+
+**Multiple Applications:** Add each application's customtags directory as a separate entry in the Administrator.
+
+**Option 2: Application.cfc (Application-specific - Preferred)**
+
+Define custom tag paths programmatically in Application.cfc:
+
+```cfml
+component {
+    this.name = "MyApplication";
+    
+    // Define custom tag path(s) - searches in order
+    this.customTagPaths = [
+        {
+            physical: getDirectoryFromPath(getCurrentTemplatePath()) & "customtags",
+            inspectTemplate: "never"  // Options: "never", "once", "always", "auto"
+        }
+    ];
+    
+    // Load HttpClient JAR files
+    this.javaSettings = {
+        loadPaths = [
+            expandPath("../ColdFusion CustomTags/cf_httpclient/lib/httpclient-4.5.14.jar"),
+            expandPath("../ColdFusion CustomTags/cf_httpclient/lib/httpcore-4.4.16.jar"),
+            expandPath("../ColdFusion CustomTags/cf_httpclient/lib/commons-logging-1.2.jar"),
+            expandPath("../ColdFusion CustomTags/cf_httpclient/lib/commons-codec-1.11.jar")
+        ],
+        reloadOnChange = false
+    };
+}
+```
+
+**Multiple Custom Tag Paths in Application.cfc:**
+```cfml
+this.customTagPaths = [
+    getDirectoryFromPath(getCurrentTemplatePath()) & "customtags",
+    expandPath("/shared/customtags"),
+    expandPath("../vendor/customtags")
+];
+```
+
+**Combined Approach:** Administrator settings apply server-wide or web-wide, while Application.cfc settings are application-specific. Lucee searches paths in this order:
+1. Application.cfc `this.customTagPaths`
+2. Web Administrator custom tag paths
+3. Server Administrator custom tag paths
+
+#### Application.cfm Configuration
+
+After setting custom tag paths in the administrator, add JAR loading configuration to your Application.cfm:
 
 **Generic Template:**
 ```cfml
 <!--- This is to enable the cf_httpclient drop-in replacement for cfx_http5. --->
-<!--- Custom tag path set in CF Administrator: Extensions > Custom Tag Paths > [your-webroot]\CustomTags --->
+<!--- Custom tag path set in CF Administrator: Extensions > Custom Tag Paths > [your-webroot]\customtags --->
 <!--- Minimal cfapplication for JAR loading support --->
 <!--- NOTE: setclientcookies="no" disables automatic CFID/CFTOKEN cookies only. Manual cookie handling via <cfcookie> and cookie scope still works. --->
 <cfapplication name="#variables.ApplicationName#" sessionmanagement="no" setclientcookies="no">
@@ -266,7 +358,7 @@ If your application uses `Application.cfm` instead of `Application.cfc`, use thi
 **Example with Absolute Paths:**
 ```cfml
 <!--- This is to enable the cf_httpclient drop-in replacement for cfx_http5. --->
-<!--- Custom tag path set in CF Administrator: Extensions > Custom Tag Paths > C:\myApplication\Code\CustomTags --->
+<!--- Custom tag path set in CF Administrator: Extensions > Custom Tag Paths > C:\myApplication\customtags --->
 <cfapplication name="#variables.ApplicationName#" sessionmanagement="no" setclientcookies="no">
 
 <cfset this.javaSettings = {
@@ -280,16 +372,17 @@ If your application uses `Application.cfm` instead of `Application.cfc`, use thi
 }>
 ```
 
-**Why This Approach?**
+#### Why This Approach?
 
 **CF11 Limitation:** Application.cfm does not support `this.customtagpaths` unless "Enable Per App Settings" is enabled in CF Administrator (requires server restart).
 
 **Solution:** 
-- Custom tag paths: Set server-wide in CF Administrator (no restart)
-- JAR loading: Set per-application via `this.javaSettings` in Application.cfm
-- Minimal `<cfapplication>`: Required for `this.javaSettings` to work, but configured to not interfere with existing application logic
+- **Custom tag paths:** Set server-wide in CF Administrator (no restart required)
+- **JAR loading:** Set per-application via `this.javaSettings` in Application.cfm
+- **Minimal `<cfapplication>`:** Required for `this.javaSettings` to work, but configured to not interfere with existing application logic
 
-**What the `<cfapplication>` Tag Does:**
+#### What the `<cfapplication>` Tag Does:
+
 - `sessionmanagement="no"` - Does NOT create session scope or interfere with existing session handling
 - `setclientcookies="no"` - Disables automatic CFID/CFTOKEN cookies (manual `<cfcookie>` still works)
 - Enables `this.javaSettings` to load JAR files
